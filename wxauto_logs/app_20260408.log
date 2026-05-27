@@ -1,0 +1,427 @@
+2026-04-08 11:03:13 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: 宋小宛, False, False, 0.5
+2026-04-08 11:03:26 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-08 03:03:26.720578+00:00\r\n\r\n'
+2026-04-08 11:03:28 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-08 03:03:28.675072+00:00\r\n\r\n'
+2026-04-08 11:03:28 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:03:28 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:03:28 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 11:03:28 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:03:31 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:03:31 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: a5111def18854af39fbc2af3e6e2cf3e
+2026-04-08 11:03:31 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 11:03:31 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:04:58 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 11:04:58 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 19a1550e59434dad80010240e54a2eda
+2026-04-08 11:04:58 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:04:58 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 11:04:58 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:04:58 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:04:58 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:04:58 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:04:58 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 11:04:58 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 11:04:58 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:04:58 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:04:58 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 11:04:58 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:05:02 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 11:05:02 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 99f62f84c5be4b42a3337f336503676d
+2026-04-08 11:05:02 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:05:02 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 11:05:02 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:05:02 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:05:02 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:05:03 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:05:03 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 11:05:03 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 11:05:03 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:05:03 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:05:03 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 11:05:03 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:05:03 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:05:03 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:05:03 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 11:05:03 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 11:05:03 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 11:05:03 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 11:05:03 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: 潘苏雄, False, False, 0.5
+2026-04-08 11:05:04 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:118]  模糊匹配: 潘苏雄
+2026-04-08 11:05:04 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: 恭喜你考研上岸！祝你前程似锦，学业有成！🎉
+2026-04-08 11:05:05 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:05:05 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:05:05 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 11:05:05 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:05:05 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:05:05 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:05:05 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 11:05:05 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 11:05:05 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 11:05:05 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 11:05:05 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: 恭喜你考研上岸！祝你前程似锦，学业有成！🎉
+2026-04-08 11:05:05 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:05:05 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:05:05 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":3,"result":{"_meta":{"fastmcp":{"wrap_result":true}},"content":[{"type":"text","text":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"}],"structuredContent":{"result":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"},"isError":false}}\r\n\r\n'
+2026-04-08 11:05:05 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:05:06 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:05:06 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:05:06 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 11:05:06 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:05:08 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:05:08 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:05:08 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":3,"result":{"_meta":{"fastmcp":{"wrap_result":true}},"content":[{"type":"text","text":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"}],"structuredContent":{"result":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"},"isError":false}}\r\n\r\n'
+2026-04-08 11:05:08 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:05:08 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:05:08 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 19a1550e59434dad80010240e54a2eda
+2026-04-08 11:05:08 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 11:05:08 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:05:15 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:05:15 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 99f62f84c5be4b42a3337f336503676d
+2026-04-08 11:05:15 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 11:05:15 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:06:29 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 11:06:29 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 9179e430c72b4d1aa3688488dc998c73
+2026-04-08 11:06:29 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:06:29 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 11:06:29 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:06:29 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:06:29 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:06:30 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:06:30 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 11:06:30 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 11:06:30 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:06:30 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:06:30 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 11:06:30 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:06:33 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:06:33 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:06:33 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 11:06:33 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 11:06:33 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 11:06:33 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 11:06:33 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: 宋小宛, False, False, 0.5
+2026-04-08 11:06:35 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:06:35 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:06:35 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":3,"result":{"_meta":{"fastmcp":{"wrap_result":true}},"content":[{"type":"text","text":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"}],"structuredContent":{"result":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"},"isError":false}}\r\n\r\n'
+2026-04-08 11:06:35 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:06:44 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-08 03:06:44.951277+00:00\r\n\r\n'
+2026-04-08 11:06:47 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:06:47 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:06:47 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9d\x8c \xe5\x8f\x91\xe9\x80\x81\xe5\xa4\xb1\xe8\xb4\xa5: (-2147220991, \'\xe4\xba\x8b\xe4\xbb\xb6\xe6\x97\xa0\xe6\xb3\x95\xe8\xb0\x83\xe7\x94\xa8\xe4\xbb\xbb\xe4\xbd\x95\xe8\xae\xa2\xe6\x88\xb7\', (None, None, None, 0, None))"}],"isError":false}}\r\n\r\n'
+2026-04-08 11:06:47 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:06:51 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:06:51 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 9179e430c72b4d1aa3688488dc998c73
+2026-04-08 11:06:51 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 11:06:51 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:07:01 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 11:07:01 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: dae1f108341940faaad09a250b261429
+2026-04-08 11:07:01 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:07:01 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 11:07:01 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:07:01 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:01 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:02 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:02 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 11:07:02 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 11:07:02 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:07:02 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:07:02 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 11:07:02 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:07:04 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:04 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:04 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 11:07:04 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 11:07:04 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 11:07:04 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 11:07:04 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: 小宛，振作起来！人生总有起伏，但请相信困难只是暂时的。保持积极向上的心态，相信自己有能力克服一切挑战。加油！你是最棒的！
+2026-04-08 11:07:05 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:07:05 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:07:05 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 11:07:05 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:07:06 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:07:06 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:07:06 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":3,"result":{"_meta":{"fastmcp":{"wrap_result":true}},"content":[{"type":"text","text":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"}],"structuredContent":{"result":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"},"isError":false}}\r\n\r\n'
+2026-04-08 11:07:06 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:07:08 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:08 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: dae1f108341940faaad09a250b261429
+2026-04-08 11:07:08 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 11:07:08 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:07:49 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 11:07:49 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 3b92601de6cb4f929f79ee472ce16ef4
+2026-04-08 11:07:49 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:07:49 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 11:07:49 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:07:50 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:50 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:50 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:50 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 11:07:50 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 11:07:50 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:07:50 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:07:50 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 11:07:50 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:07:52 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:52 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 11:07:52 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 11:07:52 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: 在干嘛呢，我是AI
+2026-04-08 11:07:53 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 11:07:53 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 11:07:53 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 11:07:53 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 11:07:54 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 11:07:54 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 3b92601de6cb4f929f79ee472ce16ef4
+2026-04-08 11:07:54 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 11:07:54 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:05:08 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 12:05:08 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 224e20e11c8e49d3beab7602a5364e62
+2026-04-08 12:05:08 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:05:08 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 12:05:08 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:05:09 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:05:09 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:05:09 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:05:09 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 12:05:09 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 12:05:09 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:05:09 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:05:09 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 12:05:09 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:05:10 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:05:10 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:05:10 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:05:16 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:05:16 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:05:16 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"_meta":{"fastmcp":{"wrap_result":true}},"content":[{"type":"text","text":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"}],"structuredContent":{"result":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"},"isError":false}}\r\n\r\n'
+2026-04-08 12:05:16 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:05:17 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:05:17 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 224e20e11c8e49d3beab7602a5364e62
+2026-04-08 12:05:17 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 12:05:17 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:06:38 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: 宋小, False, False, 0.5
+2026-04-08 12:06:42 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:06:42 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:06:42 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9d\x8c \xe5\x8f\x91\xe9\x80\x81\xe5\xa4\xb1\xe8\xb4\xa5: (-2147220991, \'\xe4\xba\x8b\xe4\xbb\xb6\xe6\x97\xa0\xe6\xb3\x95\xe8\xb0\x83\xe7\x94\xa8\xe4\xbb\xbb\xe4\xbd\x95\xe8\xae\xa2\xe6\x88\xb7\', (None, None, None, 0, None))"}],"isError":false}}\r\n\r\n'
+2026-04-08 12:06:42 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:06:43 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:06:43 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: aa6945111c134af5a4487ef84012b399
+2026-04-08 12:06:43 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 12:06:43 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:08:42 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 12:08:42 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 77ff56d209d34d59893d39990cf8c62c
+2026-04-08 12:08:42 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:08:42 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 12:08:42 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:08:42 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:08:42 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:08:43 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:08:43 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 12:08:43 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 12:08:43 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:08:43 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:08:43 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 12:08:43 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:08:45 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:08:45 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:08:45 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:08:45 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:08:45 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:08:45 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:08:45 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: 宋小发, False, False, 0.5
+2026-04-08 12:08:47 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:08:47 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:08:47 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":3,"result":{"_meta":{"fastmcp":{"wrap_result":true}},"content":[{"type":"text","text":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"}],"structuredContent":{"result":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"},"isError":false}}\r\n\r\n'
+2026-04-08 12:08:47 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:08:55 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:08:55 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:08:55 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 12:08:55 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:08:57 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-08 04:08:57.736599+00:00\r\n\r\n'
+2026-04-08 12:08:58 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:08:58 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 77ff56d209d34d59893d39990cf8c62c
+2026-04-08 12:08:58 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 12:08:58 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:09:15 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 12:09:15 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 671733363a36417790610d98140c23b5
+2026-04-08 12:09:15 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:09:15 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 12:09:15 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:09:16 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:09:16 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:09:16 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:09:16 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 12:09:16 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 12:09:16 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:09:16 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:09:16 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 12:09:16 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:09:18 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:09:18 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:09:18 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:09:18 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:09:18 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:09:18 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:09:18 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: 宋小发, False, False, 0.5
+2026-04-08 12:09:19 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:118]  模糊匹配: 宋小发
+2026-04-08 12:09:19 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: 小发，振作起来！人生难免会遇到挫折，但这些都是成长的机会。保持积极向上的心态，相信自己有能力克服困难。每一次跌倒都是为了更好地站起来，加油！你一定可以的！
+2026-04-08 12:09:20 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:09:20 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:09:20 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 12:09:20 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:09:20 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:09:20 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:09:20 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":3,"result":{"_meta":{"fastmcp":{"wrap_result":true}},"content":[{"type":"text","text":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"}],"structuredContent":{"result":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"},"isError":false}}\r\n\r\n'
+2026-04-08 12:09:20 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:09:23 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:09:23 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 671733363a36417790610d98140c23b5
+2026-04-08 12:09:23 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 12:09:23 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:10:25 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 12:10:25 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 97d8e5f1d29f44548262c2b7b6f110d1
+2026-04-08 12:10:25 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:10:25 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 12:10:25 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:10:25 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:25 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:25 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:25 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 12:10:25 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 12:10:25 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:10:25 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:10:25 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 12:10:25 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:10:28 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:28 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:28 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:10:28 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:10:28 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:10:28 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:10:28 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: YU, False, False, 0.5
+2026-04-08 12:10:29 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:118]  模糊匹配: YU
+2026-04-08 12:10:29 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: YU，振作起来！困难只是暂时的，相信自己的能力，保持积极向上的心态。每一次挫折都是成长的机会，加油！你一定可以的！
+2026-04-08 12:10:29 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:10:29 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:10:29 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 12:10:29 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:10:31 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:10:31 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:10:31 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":3,"result":{"_meta":{"fastmcp":{"wrap_result":true}},"content":[{"type":"text","text":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"}],"structuredContent":{"result":"\xe2\x9c\x85 \xe9\x82\xae\xe4\xbb\xb6\xe5\xb7\xb2\xe5\x8f\x91\xe9\x80\x81\xe5\x88\xb0\xef\xbc\x9a971662861@qq.com"},"isError":false}}\r\n\r\n'
+2026-04-08 12:10:31 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:10:33 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:33 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 97d8e5f1d29f44548262c2b7b6f110d1
+2026-04-08 12:10:33 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 12:10:33 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:10:44 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 12:10:44 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 7aa709db5147443fa0da1d561018d898
+2026-04-08 12:10:44 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:10:44 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 12:10:44 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:10:44 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:44 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:44 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:44 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 12:10:44 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 12:10:44 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:10:44 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:10:44 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 12:10:44 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:10:46 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:46 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:10:46 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:10:46 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: YU，我知道你现在可能有些困难，但请相信这只是暂时的。每个人都有低谷期，重要的是要保持积极向上的心态。振作起来，相信自己，你一定能够克服困难，重新找到前进的动力和方向。加油！💪✨
+2026-04-08 12:10:47 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:10:47 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:10:47 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 12:10:47 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:10:48 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:10:48 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 7aa709db5147443fa0da1d561018d898
+2026-04-08 12:10:48 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 12:10:48 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:11:04 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 12:11:04 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 9769d0ac707d45f6a796438bb3a3c913
+2026-04-08 12:11:04 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:11:04 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 12:11:04 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:11:04 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:04 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:05 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:05 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 12:11:05 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 12:11:05 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:11:05 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:11:05 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 12:11:05 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:11:07 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:07 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:11:07 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:11:07 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: YU，我知道你现在可能有些困难，但请相信这只是暂时的。每个人都有低谷期，重要的是保持积极的心态。振作起来，相信自己有能力克服困难，未来一定会更好！加油！💪
+2026-04-08 12:11:08 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:11:08 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:11:08 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 12:11:08 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:11:10 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:10 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 9769d0ac707d45f6a796438bb3a3c913
+2026-04-08 12:11:10 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 12:11:10 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:11:40 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 12:11:40 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: 8dc1a93c94c244e1ac0d29d15ea9ae5d
+2026-04-08 12:11:40 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:11:40 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 12:11:40 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:11:41 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:41 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:41 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:41 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 12:11:41 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 12:11:41 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:11:41 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:11:41 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 12:11:41 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:11:44 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:44 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:44 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:11:44 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:11:44 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 12:11:44 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 12:11:44 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:11:44 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:11:44 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":3,"result":{"_meta":{"fastmcp":{"wrap_result":true}},"content":[{"type":"text","text":"2026-04-08 12:11:44 Wednesday"}],"structuredContent":{"result":"2026-04-08 12:11:44 Wednesday"},"isError":false}}\r\n\r\n'
+2026-04-08 12:11:44 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:11:44 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: YU，振作起来！人生总有起伏，但请相信困难只是暂时的。保持积极向上的心态，相信自己有能力克服一切挑战。每一次挫折都是成长的机会，加油！你一定可以的！💪✨
+2026-04-08 12:11:44 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 12:11:44 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 12:11:44 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 12:11:44 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 12:11:46 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 12:11:46 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 8dc1a93c94c244e1ac0d29d15ea9ae5d
+2026-04-08 12:11:46 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 12:11:46 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 22:08:25 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:227]  Creating new transport
+2026-04-08 22:08:25 [mcp.server.streamable_http_manager] [INFO] [streamable_http_manager.py:240]  Created new transport with session ID: dd2f6b9cf500402897e9bdad2c9d9361
+2026-04-08 22:08:25 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 22:08:25 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"experimental":{},"logging":{},"prompts":{"listChanged":true},"resources":{"subscribe":false,"listChanged":true},"tools":{"listChanged":true},"extensions":{"io.modelcontextprotocol/ui":{}}},"serverInfo":{"name":"wxauto_mcp","version":"3.2.0"}}}\r\n\r\n'
+2026-04-08 22:08:25 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 22:08:26 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 22:08:26 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 22:08:26 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 22:08:26 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type ListToolsRequest
+2026-04-08 22:08:26 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type ListToolsRequest
+2026-04-08 22:08:26 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 22:08:26 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 22:08:26 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"add","inputSchema":{"additionalProperties":false,"properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"integer"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"hello","inputSchema":{"additionalProperties":false,"properties":{"name":{"default":"user","type":"string"}},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_current_time","inputSchema":{"additionalProperties":false,"properties":{},"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_email","inputSchema":{"additionalProperties":false,"properties":{"to_email":{"type":"string"},"content":{"type":"string"}},"required":["to_email","content"],"type":"object"},"outputSchema":{"properties":{"result":{"type":"string"}},"required":["result"],"type":"object","x-fastmcp-wrap-result":true},"_meta":{"fastmcp":{"tags":[]}}},{"name":"send_message","description":"\xe5\x90\x91\xe5\xbe\xae\xe4\xbf\xa1\xe5\xa5\xbd\xe5\x8f\x8b\xe5\x8f\x91\xe9\x80\x81\xe6\xb6\x88\xe6\x81\xaf","inputSchema":{"additionalProperties":false,"properties":{"msg":{"type":"string"},"to":{"type":"string"}},"required":["msg","to"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}},{"name":"get_all_messages","description":"\xe8\x8e\xb7\xe5\x8f\x96\xe8\x81\x8a\xe5\xa4\xa9\xe8\xae\xb0\xe5\xbd\x95","inputSchema":{"additionalProperties":false,"properties":{"who":{"type":"string"}},"required":["who"],"type":"object"},"_meta":{"fastmcp":{"tags":[]}}}]}}\r\n\r\n'
+2026-04-08 22:08:26 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 22:08:29 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 22:08:29 [mcp.server.lowlevel.server] [INFO] [server.py:720]  Processing request of type CallToolRequest
+2026-04-08 22:08:29 [mcp.server.lowlevel.server] [DEBUG] [server.py:723]  Dispatching request of type CallToolRequest
+2026-04-08 22:08:29 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: YU, False, False, 0.5
+2026-04-08 22:08:41 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-08 14:08:41.142344+00:00\r\n\r\n'
+2026-04-08 22:08:44 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-08 14:08:44.165856+00:00\r\n\r\n'
+2026-04-08 22:08:56 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-08 14:08:56.163644+00:00\r\n\r\n'
+2026-04-08 22:08:59 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-08 14:08:59.176087+00:00\r\n\r\n'
+2026-04-08 22:09:01 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:118]  模糊匹配: YU
+2026-04-08 22:09:01 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: YU，最近工作辛苦了，一定要注意身体，多休息，保持健康！有什么需要帮忙的随时告诉我。
+2026-04-08 22:09:01 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-08 22:09:01 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-08 22:09:01 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-08 22:09:01 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-08 22:09:03 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-08 22:09:03 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: dd2f6b9cf500402897e9bdad2c9d9361
+2026-04-08 22:09:03 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-08 22:09:03 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.

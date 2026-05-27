@@ -1,0 +1,11 @@
+2026-05-14 16:28:46 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: YU, False, False, 0.5
+2026-05-14 16:28:47 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:118]  模糊匹配: YU
+2026-05-14 16:28:47 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: 祝你今天过得愉快，万事如意！🎉
+2026-05-14 16:28:48 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-05-14 16:28:48 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-05-14 16:28:48 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-05-14 16:28:48 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-05-14 16:28:49 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-05-14 16:28:49 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 4cfcc2f52d7345eda852f05a2c8cdf40
+2026-05-14 16:28:49 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-05-14 16:28:49 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.

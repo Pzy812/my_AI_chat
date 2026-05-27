@@ -1,0 +1,21 @@
+flask
+flask-cors
+redis
+langchain-community
+langchain-core
+langchain-mcp
+langgraph
+mcp
+fastmcp
+zhipuai
+pymilvus>=2.4.0
+langchain-text-splitters
+requests
+charset-normalizer>=3.4.0
+prettytable
+openpyxl
+pdfplumber>=0.10.0
+markitdown[docx,pptx,xlsx]>=0.1.2
+python-dotenv>=1.0.0
+# 可选：USE_DOCUMENT_MCP=1 时走 MCP stdio（Windows 易失败）
+awslabs-document-loader-mcp-server>=1.0.12

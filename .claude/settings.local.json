@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(start chrome *)",
+      "Bash(start \"\" \"C:\\\\Program Files\\\\Tencent\\\\WeChat\\\\WeChat.exe\")",
+      "Bash(start \"\" \"C:\\\\Program Files \\(x86\\)\\\\Tencent\\\\WeChat\\\\WeChat.exe\")",
+      "Bash(start '' '__TRACKED_VAR__\\\\AppData\\\\Local\\\\Tencent\\\\WeChat\\\\WeChat.exe')",
+      "Read(//c/Users/HP/**)",
+      "Bash(find /d -name \"WeChat.exe\" -maxdepth 3)"
+    ]
+  }
+}

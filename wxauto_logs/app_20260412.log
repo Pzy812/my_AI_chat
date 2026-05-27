@@ -1,0 +1,24 @@
+2026-04-12 15:31:40 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:86]  切换聊天窗口: kio, False, False, 0.5
+2026-04-12 15:31:51 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-12 07:31:51.172051+00:00\r\n\r\n'
+2026-04-12 15:31:55 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-12 07:31:55.813840+00:00\r\n\r\n'
+2026-04-12 15:32:06 [sse_starlette.sse] [DEBUG] [sse.py:397]  ping: b': ping - 2026-04-12 07:32:06.158645+00:00\r\n\r\n'
+2026-04-12 15:32:08 [wxauto4(41.1.2)] [DEBUG] [sessionbox.py:118]  模糊匹配: kio
+2026-04-12 15:32:08 [wxauto4(41.1.2)] [DEBUG] [chatbox.py:154]  发送消息: kio你好！关于考研英语单词背诵，给你一些实用建议：
+
+📚 **背诵方法建议：**
+1. **艾宾浩斯记忆法**：按照1天、3天、7天、15天的间隔复习，效果最好
+2. **词根词缀记忆**：掌握常见词根词缀，能举一反三
+3. **语境记忆**：把单词放在例句和文章中记忆，更容易记住
+4. **分类记忆**：按主题分类背诵，比如教育类、科技类、经济类等
+5. **碎片时间利用**：排队、坐车等时间用APP刷单词
+
+💪 **鼓励话语：**
+考研这条路虽然辛苦，但每多背一个单词，就离梦想更近一步！坚持就是胜利，相信自己一定能行！每天进步一点点，时间会给你最好的回报。加油，kio！你一定可以的！🌟
+2026-04-12 15:32:09 [mcp.server.lowlevel.server] [DEBUG] [server.py:790]  Response sent
+2026-04-12 15:32:09 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:612]  Closing SSE writer
+2026-04-12 15:32:09 [sse_starlette.sse] [DEBUG] [sse.py:315]  chunk: b'event: message\r\ndata: {"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"\xe2\x9c\x85 \xe6\xb6\x88\xe6\x81\xaf\xe5\x8f\x91\xe9\x80\x81\xe6\x88\x90\xe5\x8a\x9f"}],"isError":false}}\r\n\r\n'
+2026-04-12 15:32:09 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
+2026-04-12 15:32:13 [mcp.server.streamable_http_manager] [DEBUG] [streamable_http_manager.py:221]  Session already exists, handling request directly
+2026-04-12 15:32:13 [mcp.server.streamable_http] [INFO] [streamable_http.py:779]  Terminating session: 917b4ec3f9614784ae84f2103f4d609c
+2026-04-12 15:32:13 [mcp.server.streamable_http] [DEBUG] [streamable_http.py:730]  Closing standalone SSE writer
+2026-04-12 15:32:13 [sse_starlette.sse] [DEBUG] [sse.py:337]  Got event: http.disconnect. Stop streaming.
