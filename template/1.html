@@ -254,7 +254,7 @@
                 <div class="text-center xl:text-left">
                     <div class="inline-flex xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/70 border border-slate-600/35 text-xs text-slate-400 mb-4">
                         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Redis 记忆 · Milvus RAG 已启用
+                        Redis 记忆 · 可选 RAG / GraphRAG
                     </div>
                     <h1 class="text-3xl sm:text-4xl lg:text-[2.75rem] font-bold text-white tracking-tight leading-tight">
                         AI 连续对话
@@ -306,8 +306,8 @@
                                 <i class="fa-solid fa-book-open text-lg"></i>
                             </div>
                             <div>
-                                <p class="font-semibold text-slate-200 text-sm">文档 RAG 检索</p>
-                                <p class="text-slate-500 text-xs sm:text-sm mt-1 leading-relaxed">Milvus 分层：会话 Database（如 rag_default）→ 每篇文档独立 Collection（如 doc_xxx）；对话时按文档检索片段。</p>
+                                <p class="font-semibold text-slate-200 text-sm">知识库检索</p>
+                                <p class="text-slate-500 text-xs sm:text-sm mt-1 leading-relaxed">上传前可选择 <strong class="text-slate-400 font-normal">普通 RAG</strong>（向量分块）或 <strong class="text-slate-400 font-normal">GraphRAG</strong>（Neo4j 图 + 向量混合检索）。</p>
                             </div>
                         </div>
                         <div class="feature-pill p-4 flex gap-3">
@@ -361,6 +361,19 @@
                         <input type="checkbox" id="cbToolDebug" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500/40">
                         <span>显示本轮 MCP 工具调用详情（是否调用 <code class="text-slate-500">send_message</code> / <code class="text-slate-500">send_email</code> 及原始返回，便于判断是模型选错工具还是底层失败）</span>
                     </label>
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 pt-1">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 shrink-0">知识库模式</span>
+                        <div class="flex flex-wrap gap-4 text-sm text-slate-300" role="radiogroup" aria-label="知识库模式">
+                            <label class="flex items-center gap-2 cursor-pointer select-none">
+                                <input type="radio" name="ragMode" value="rag" class="text-sky-500 focus:ring-sky-500/40" checked>
+                                <span>普通 RAG <span class="text-slate-500 text-xs">（Milvus 向量分块，速度快）</span></span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer select-none">
+                                <input type="radio" name="ragMode" value="graphrag" class="text-emerald-500 focus:ring-emerald-500/40">
+                                <span>GraphRAG <span class="text-slate-500 text-xs">（Neo4j 单库最新图谱 + Milvus 向量；历史文档靠 Milvus）</span></span>
+                            </label>
+                        </div>
+                    </div>
                     <div class="flex flex-col lg:flex-row lg:items-end gap-3 pt-1 border-t border-slate-700/40">
                         <div class="flex-1 min-w-0">
                             <label for="chatSessionId" class="flex items-center justify-between gap-2 text-[11px] font-medium text-slate-500 mb-1.5">
@@ -419,11 +432,36 @@
     <script>
         let chatAwaitingReply = false;
         let pendingUploads = [];
+        const RAG_MODE_STORAGE_KEY = 'aiChatRagMode';
 
         window.onload = function () {
+            initRagModeSelector();
             loadChatHistory();
             loadSessions();
         };
+
+        function getRagMode() {
+            const checked = document.querySelector('input[name="ragMode"]:checked');
+            const mode = checked ? checked.value : 'rag';
+            return mode === 'graphrag' ? 'graphrag' : 'rag';
+        }
+
+        function initRagModeSelector() {
+            const saved = localStorage.getItem(RAG_MODE_STORAGE_KEY);
+            if (saved === 'graphrag' || saved === 'rag') {
+                const el = document.querySelector('input[name="ragMode"][value="' + saved + '"]');
+                if (el) el.checked = true;
+            }
+            document.querySelectorAll('input[name="ragMode"]').forEach(function (radio) {
+                radio.addEventListener('change', function () {
+                    localStorage.setItem(RAG_MODE_STORAGE_KEY, getRagMode());
+                });
+            });
+        }
+
+        function ragModeLabel(mode) {
+            return mode === 'graphrag' ? 'GraphRAG' : 'RAG';
+        }
 
         function apiBase() {
             return window.location.origin;
@@ -831,8 +869,9 @@
                 const chip = document.createElement('span');
                 chip.className = 'upload-chip';
                 const kindLabel = f.kind === 'image' ? '图片' : '文档';
+                const modeLabel = ragModeLabel(f.rag_mode || 'rag');
                 chip.innerHTML = '<i class="fa-solid fa-' + (f.kind === 'image' ? 'image' : 'file-lines') + '"></i> ' +
-                    escapeHtml(f.name) + ' · ' + kindLabel +
+                    escapeHtml(f.name) + ' · ' + kindLabel + ' · <span class="text-sky-400/90">' + modeLabel + '</span>' +
                     ' <button type="button" title="移除">×</button>';
                 chip.querySelector('button').addEventListener('click', function () {
                     pendingUploads = pendingUploads.filter(function (x) { return x.file_id !== f.file_id; });
@@ -845,12 +884,16 @@
         async function uploadOneFile(file) {
             const fd = new FormData();
             fd.append('session_id', getSessionId());
+            fd.append('rag_mode', getRagMode());
             fd.append('file', file, file.name);
             const res = await fetch(apiBase() + '/chat/upload', { method: 'POST', body: fd }).then(r => r.json());
             if (res.code !== 0 || !res.file) {
                 throw new Error(res.msg || '上传失败');
             }
-            return Object.assign({}, res.file, { rag: res.rag || null });
+            return Object.assign({}, res.file, {
+                rag: res.rag || null,
+                rag_mode: res.rag_mode || getRagMode()
+            });
         }
 
         async function handleFilesSelected(fileList) {
@@ -861,7 +904,7 @@
             const files = Array.from(fileList || []);
             if (!files.length) return;
             setChatUiLocked(true);
-            setChatStatusLine('正在上传、解析并写入知识库…');
+            setChatStatusLine('正在上传、解析并写入 ' + ragModeLabel(getRagMode()) + ' 知识库…');
             try {
                 for (const file of files) {
                     const meta = await uploadOneFile(file);
@@ -871,11 +914,16 @@
                 const last = pendingUploads[pendingUploads.length - 1];
                 let ragHint = '';
                 if (last && last.rag) {
-                    if (last.rag.chunks) {
-                        ragHint = '，已索引 ' + last.rag.chunks + ' 块 → ' +
+                    const mode = ragModeLabel(last.rag_mode || last.rag.mode || getRagMode());
+                    if (last.rag.entities != null || last.rag.relations != null) {
+                        ragHint = '，' + mode + ' 已索引 ' +
+                            (last.rag.entities || 0) + ' 实体 / ' + (last.rag.relations || 0) + ' 关系' +
+                            (last.rag.neo4j_database ? ' → Neo4j:' + last.rag.neo4j_database : '');
+                    } else if (last.rag.chunks) {
+                        ragHint = '，' + mode + ' 已索引 ' + last.rag.chunks + ' 块 → ' +
                             (last.rag.hierarchy || (last.rag.database + ' / ' + last.rag.collection));
                     } else if (last.rag.error) {
-                        ragHint = '（Milvus 索引失败：' + last.rag.error + '）';
+                        ragHint = '（' + mode + ' 索引失败：' + last.rag.error + '）';
                     }
                 }
                 showToast('附件已解析' + ragHint, 'success');
@@ -931,6 +979,7 @@
                     session_id: getSessionId(),
                     message: text,
                     file_ids: fileIds,
+                    rag_mode: getRagMode(),
                     include_tool_debug: wantDebug
                 });
                 pendingUploads = [];
@@ -946,7 +995,8 @@
             await loadSessions();
 
             if (res.code === 0) {
-                setChatStatusLine(res.rag_used ? '已写入 Redis · 已使用 RAG 检索' : '已写入 Redis');
+                const modeText = res.rag_mode === 'graphrag' ? 'GraphRAG' : (res.rag_used ? 'RAG' : '');
+                setChatStatusLine(res.rag_used ? ('已写入 Redis · 已使用 ' + modeText + ' 检索') : '已写入 Redis');
                 if (wantDebug && res.tool_debug) showToolDebug(res.tool_debug);
             } else {
                 setChatStatusLine(res.msg || '发送失败');

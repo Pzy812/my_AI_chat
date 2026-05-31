@@ -61,20 +61,22 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "Waiting for MCP on 127.0.0.1:8081 ..."
+echo "Waiting for MCP on 127.0.0.1:${MCP_PORT:-8090} ..."
 python - <<'PY'
+import os
 import socket
 import time
 
+port = int(os.environ.get("MCP_PORT", "8090"))
 for _ in range(60):
     try:
-        s = socket.create_connection(("127.0.0.1", 8081), timeout=2)
+        s = socket.create_connection(("127.0.0.1", port), timeout=2)
         s.close()
         break
     except OSError:
         time.sleep(0.5)
 else:
-    raise SystemExit("MCP did not open port 8081 in time")
+    raise SystemExit(f"MCP did not open port {port} in time")
 time.sleep(0.8)
 PY
 

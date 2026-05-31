@@ -12,7 +12,7 @@ load_dotenv(BASE_DIR / ".env", override=False)
 
 
 def get_zhipuai_api_key() -> str:
-    key = os.getenv("ZHIPUAI_API_KEY", "").strip()
+    key = os.getenv("ZHIPUAI_API_KEY", "260dd2ba64e041fe834b486d57768ead.AJL7WD9AT9AsYxCb").strip()
     if not key:
         raise RuntimeError(
             "未配置 ZHIPUAI_API_KEY。请在项目根目录创建 .env 文件并写入：\n"

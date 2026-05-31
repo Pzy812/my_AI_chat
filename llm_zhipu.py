@@ -11,6 +11,8 @@ from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
 from pydantic import Field
 
+from api_throttle import call_with_retry, call_with_retry_async
+
 LLM_REQUEST_TIMEOUT = float(os.getenv("LLM_REQUEST_TIMEOUT", "180"))
 
 
@@ -46,8 +48,12 @@ class ChatZhipuAI(_BaseChatZhipuAI):
         }
         timeout = httpx.Timeout(self.request_timeout)
         with httpx.Client(headers=headers, timeout=timeout) as client:
-            response = client.post(self.zhipuai_api_base, json=payload)  # type: ignore[arg-type]
-            response.raise_for_status()
+            def _post() -> httpx.Response:
+                response = client.post(self.zhipuai_api_base, json=payload)  # type: ignore[arg-type]
+                response.raise_for_status()
+                return response
+
+            response = call_with_retry(_post, label="zhipu-chat")
         return self._create_chat_result(response.json())
 
     async def _agenerate(
@@ -79,8 +85,12 @@ class ChatZhipuAI(_BaseChatZhipuAI):
         }
         timeout = httpx.Timeout(self.request_timeout)
         async with httpx.AsyncClient(headers=headers, timeout=timeout) as client:
-            response = await client.post(self.zhipuai_api_base, json=payload)  # type: ignore[arg-type]
-            response.raise_for_status()
+            async def _post() -> httpx.Response:
+                response = await client.post(self.zhipuai_api_base, json=payload)  # type: ignore[arg-type]
+                response.raise_for_status()
+                return response
+
+            response = await call_with_retry_async(_post, label="zhipu-chat")
         return self._create_chat_result(response.json())
 
 

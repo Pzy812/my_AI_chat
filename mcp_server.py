@@ -80,7 +80,7 @@ def send_email(to_email: str, content: str) -> str:
         return f"❌ 发送失败：{str(e)}"
 
 
-@mcp.tool(name="send_message", description="向微信好友发送消息")
+# @mcp.tool(name="send_message", description="向微信好友发送消息")
 def send_message(msg: str, to: str):
     wx = _get_wechat()
     if wx is None:
@@ -224,4 +224,7 @@ def export_to_excel(headers: list, rows: list, filename: str | None = None) -> s
 
 
 if __name__ == "__main__":
-    mcp.run(transport="http", host="0.0.0.0", port=8081)
+    # _get_wechat()
+    # send_message("nh","YU")
+    _port = int(os.getenv("MCP_PORT", "8090"))
+    mcp.run(transport="http", host="0.0.0.0", port=_port)

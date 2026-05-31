@@ -9,6 +9,7 @@ mcp
 fastmcp
 zhipuai
 pymilvus>=2.4.0
+neo4j>=5.0.0
 langchain-text-splitters
 requests
 charset-normalizer>=3.4.0

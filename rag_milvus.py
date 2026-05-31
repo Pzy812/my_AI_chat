@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from typing import Any
 
 import env_config  # noqa: F401 — 加载 .env
 from env_config import get_zhipuai_api_key
 
+from api_throttle import call_with_retry
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pymilvus import MilvusClient
 from zai import ZhipuAiClient as ZhipuAI # ✅ 新版官方标准
@@ -27,7 +29,8 @@ EMBEDDING_DIM = int(os.getenv("RAG_EMBEDDING_DIM", "1024"))
 CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "600"))
 CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "100"))
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
-EMBED_BATCH_SIZE = int(os.getenv("RAG_EMBED_BATCH_SIZE", "16"))
+EMBED_BATCH_SIZE = int(os.getenv("RAG_EMBED_BATCH_SIZE", "8"))
+EMBED_BATCH_DELAY_SEC = float(os.getenv("RAG_EMBED_BATCH_DELAY_SEC", "0"))
 RAG_ENABLED = os.getenv("RAG_ENABLED", "1").strip().lower() not in ("0", "false", "no")
 
 _milvus_root: MilvusClient | None = None
@@ -126,14 +129,21 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         return []
     client = _zhipu_client()
     vectors: list[list[float]] = []
-    for i in range(0, len(texts), EMBED_BATCH_SIZE):
+    batches = list(range(0, len(texts), EMBED_BATCH_SIZE))
+    for bi, i in enumerate(batches):
         batch = texts[i : i + EMBED_BATCH_SIZE]
-        resp = client.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=batch,
-            dimensions=EMBEDDING_DIM,
-        )
-        vectors.extend([item.embedding for item in resp.data])
+
+        def _embed_batch() -> list[list[float]]:
+            resp = client.embeddings.create(
+                model=EMBEDDING_MODEL,
+                input=batch,
+                dimensions=EMBEDDING_DIM,
+            )
+            return [item.embedding for item in resp.data]
+
+        vectors.extend(call_with_retry(_embed_batch, label="zhipu-embed"))
+        if bi + 1 < len(batches) and EMBED_BATCH_DELAY_SEC > 0:
+            time.sleep(EMBED_BATCH_DELAY_SEC)
     return vectors
 
 

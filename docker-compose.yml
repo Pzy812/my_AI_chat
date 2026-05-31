@@ -1,3 +1,4 @@
+#docker compose up -d
 services:
   etcd:
     image: quay.io/coreos/etcd:v3.5.5
@@ -79,22 +80,57 @@ services:
     networks:
       - app_net
 
+  neo4j:
+    image: neo4j:5.15-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/12345678
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    networks:
+      - app_net
+
   web:
     build: .
     restart: unless-stopped
     ports:
       - "5001:5001"
-      - "8081:8081"
+      - "8090:8090"
     environment:
+      MCP_PORT: "8090"
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_DB: "0"
       MILVUS_URI: http://milvus:19530
-      MILVUS_DB_PREFIX: rag
-      MILVUS_DOC_PREFIX: doc
+      MILVUS_DB_PREFIX: graphrag
+      MILVUS_GRAPH_PREFIX: graph
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: "12345678"
+      GRAPHRAG_ENABLED: "1"
+      GRAPHRAG_TOP_K: "8"
+      GRAPHRAG_GRAPH_HOPS: "2"
+      GRAPHRAG_EXTRACT_MAX_CHUNKS: "16"
+      GRAPHRAG_EXTRACT_BATCH_SIZE: "3"
+      GRAPHRAG_EXTRACT_BATCH_DELAY_SEC: "0"
+      API_REQUEST_INTERVAL_SEC: "0"
+      API_RETRY_MAX: "5"
+      API_RETRY_BASE_SEC: "2.0"
+      DEFAULT_RAG_MODE: rag
+      RAG_EMBED_BATCH_SIZE: "8"
+      RAG_EMBED_BATCH_DELAY_SEC: "0"
       RAG_EMBEDDING_MODEL: embedding-3
       RAG_EMBEDDING_DIM: "1024"
-      RAG_TOP_K: "5"
       # 只写变量名，Docker 会自动从 .env 文件读取值
       ZHIPUAI_API_KEY: ${ZHIPUAI_API_KEY}
       TAVILY_API_KEY: ${TAVILY_API_KEY}
@@ -102,6 +138,8 @@ services:
       redis:
         condition: service_healthy
       milvus:
+        condition: service_healthy
+      neo4j:
         condition: service_healthy
     volumes:
       - exports_data:/app/exports
@@ -118,5 +156,6 @@ volumes:
   minio_data:
   milvus_data:
   redis_data:
+  neo4j_data:
   exports_data:
   uploads_data:

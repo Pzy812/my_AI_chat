@@ -7,7 +7,7 @@ from pathlib import Path
 import env_config  # noqa: F401 — 加载 .env
 from env_config import get_zhipuai_api_key
 
-from langchain_community.chat_models import ChatZhipuAI
+from llm_zhipu import make_chat_llm
 from langchain_core.messages import HumanMessage
 
 IMAGE_MIME = {
@@ -32,7 +32,7 @@ def describe_image_glm4v(image_path: Path, hint: str = "") -> str:
         "请详细描述这张图片的内容，包括可见文字、图表、界面元素和关键信息。"
         "若图片主要是文字截图，请尽量逐段转写。"
     )
-    llm = ChatZhipuAI(model="glm-4v", temperature=0.0, api_key=api_key)
+    llm = make_chat_llm(model="glm-4v", temperature=0.0, api_key=api_key)
     msg = HumanMessage(
         content=[
             {"type": "text", "text": prompt},

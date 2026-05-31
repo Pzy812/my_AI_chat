@@ -20,7 +20,7 @@ import env_config
 from env_config import ensure_zhipuai_api_key_in_environ
 
 import chat_redis
-import rag_milvus
+import rag_service
 from llm_zhipu import make_chat_llm
 from file_upload import (
     ALLOWED_EXT,
@@ -41,7 +41,7 @@ MCP_TABLE_ATTACH_MAX = 120_000
 app = Flask(__name__, template_folder=str(BASE_DIR / "template"))
 CORS(app)  # 开启跨域，彻底解决请求不到问题
 
-# 打印当次请求的 System Prompt（含 RAG 片段）。设为 0 可关闭。
+# 打印当次请求的 System Prompt（含 GraphRAG 片段）。设为 0 可关闭。
 LOG_LLM_PROMPT = os.getenv("LOG_LLM_PROMPT", "1").strip().lower() not in ("0", "false", "no")
 LOG_LLM_PROMPT_MAX = int(os.getenv("LOG_LLM_PROMPT_MAX", "12000"))
 logger = logging.getLogger("ai_chat")
@@ -53,8 +53,8 @@ if not logger.handlers:
 
 # 配置：密钥从项目根 .env 读取（见 env_config.py）
 ensure_zhipuai_api_key_in_environ()
-MCP_HOST = "localhost"
-MCP_PORT = 8081
+MCP_HOST = os.getenv("MCP_HOST", "localhost")
+MCP_PORT = int(os.getenv("MCP_PORT", "8090"))
 MCP_URL = f"http://{MCP_HOST}:{MCP_PORT}/mcp"
 
 # 全局变量
@@ -327,7 +327,7 @@ def _build_user_message_text(
         if omit_attachment_body:
             parts.append(
                 f"\n\n--- 附件 [{kind}] {name} ---\n"
-                "（正文已写入 Milvus 知识库，相关片段见系统「知识库检索结果」，请勿重复粘贴全文。）"
+                "（正文已写入知识库，相关内容见系统检索结果，请勿重复粘贴全文。）"
             )
             continue
         parsed = (meta.get("parsed_text") or "").strip()
@@ -409,6 +409,8 @@ def chat_upload():
         dest.unlink(missing_ok=True)
         return jsonify({"code": -1, "msg": f"解析失败：{_format_error(e)}"})
 
+    rag_mode = rag_service.normalize_rag_mode(request.form.get("rag_mode"))
+
     meta = {
         "file_id": file_id,
         "name": raw_name,
@@ -417,9 +419,10 @@ def chat_upload():
         "relative_path": f"{session_id}/{stored_name}",
         "parsed_text": parsed_text,
         "parse_method": "glm-4v" if kind == "image" else "pdfplumber-markitdown",
+        "rag_mode": rag_mode,
     }
-    rag_result = rag_milvus.safe_index_document(
-        session_id, file_id, raw_name, parsed_text
+    rag_result = rag_service.index_document(
+        rag_mode, session_id, file_id, raw_name, parsed_text
     )
     if rag_result.get("database"):
         meta["milvus_database"] = rag_result["database"]
@@ -427,6 +430,12 @@ def chat_upload():
         meta["milvus_collection"] = rag_result["collection"]
     if rag_result.get("hierarchy"):
         meta["milvus_hierarchy"] = rag_result["hierarchy"]
+    if rag_result.get("entities") is not None:
+        meta["graph_entities"] = rag_result["entities"]
+    if rag_result.get("relations") is not None:
+        meta["graph_relations"] = rag_result["relations"]
+    if rag_result.get("neo4j_database"):
+        meta["neo4j_database"] = rag_result["neo4j_database"]
     chat_redis.save_upload_meta(session_id, file_id, meta)
     preview = parsed_text[:800] + ("…" if len(parsed_text) > 800 else "")
     return jsonify(
@@ -440,7 +449,9 @@ def chat_upload():
                 "preview": preview,
                 "parse_method": meta["parse_method"],
             },
+            "graphrag": rag_result if rag_mode == "graphrag" else None,
             "rag": rag_result,
+            "rag_mode": rag_mode,
         }
     )
 
@@ -462,7 +473,7 @@ def chat_clear():
     session_id = data.get("session_id") or "default"
     try:
         chat_redis.clear_session(session_id)
-        rag_milvus.safe_delete_session_chunks(session_id)
+        rag_service.delete_session_indexes(session_id)
         return jsonify({"code": 0, "msg": "会话记忆已清空"})
     except Exception as e:
         return jsonify({"code": -1, "msg": str(e)})
@@ -501,7 +512,7 @@ def chat_session_delete():
     session_id = data.get("session_id") or "default"
     try:
         chat_redis.clear_session(session_id)
-        rag_milvus.safe_delete_session_chunks(session_id)
+        rag_service.delete_session_indexes(session_id)
         return jsonify({"code": 0, "msg": "已删除会话"})
     except Exception as e:
         return jsonify({"code": -1, "msg": str(e)})
@@ -535,15 +546,25 @@ def _build_tool_debug_from_messages(messages: list) -> dict:
 
 @app.route("/chat/rag/index", methods=["GET"])
 def chat_rag_index():
-    """列出当前会话在 Milvus 中的文档索引（Database / Collection 层级）。"""
+    """列出当前会话知识库索引；mode=rag|graphrag|all。"""
     session_id = (request.args.get("session_id") or "default").strip() or "default"
+    mode = (request.args.get("mode") or "all").strip().lower()
     try:
-        items = rag_milvus.list_session_rag_index(session_id)
+        if mode == "all":
+            indexes = rag_service.list_all_session_indexes(session_id)
+            return jsonify(
+                {
+                    "code": 0,
+                    "session_id": session_id,
+                    "indexes": indexes,
+                }
+            )
+        items = rag_service.list_session_index(session_id, mode)
         return jsonify(
             {
                 "code": 0,
                 "session_id": session_id,
-                "database": rag_milvus.session_database_name(session_id),
+                "mode": rag_service.normalize_rag_mode(mode),
                 "documents": items,
             }
         )
@@ -561,11 +582,14 @@ def chat_message():
         file_ids = [file_ids] if file_ids else []
     file_ids = [str(x).strip() for x in file_ids if str(x).strip()]
     include_tool_debug = bool(data.get("include_tool_debug"))
+    rag_mode = rag_service.normalize_rag_mode(data.get("rag_mode"))
     rag_query = text.strip() or "请根据已上传文档回答用户问题"
-    rag_context = rag_milvus.build_rag_context(
-        session_id, rag_query, file_ids=file_ids or None
+    rag_context = rag_service.build_rag_context(
+        session_id, rag_query, file_ids=file_ids or None, mode=rag_mode
     )
-    use_rag_attachments = rag_milvus.rag_enabled() and bool(file_ids)
+    use_rag_attachments = rag_service.should_omit_attachment_body(
+        session_id, file_ids, mode=rag_mode
+    )
     full_text = _build_user_message_text(
         text,
         file_ids,
@@ -605,6 +629,9 @@ def chat_message():
             out["mcp_attachments"] = attachments
         if rag_context:
             out["rag_used"] = True
+            out["rag_mode"] = rag_mode
+            if rag_mode == "graphrag":
+                out["graphrag_used"] = True
         if include_tool_debug:
             out["tool_debug"] = _build_tool_debug_from_messages(msgs)
             out["prompt_debug"] = _prompt_debug_payload(agent_system_prompt, rag_context)
@@ -613,7 +640,9 @@ def chat_message():
         err_name = type(e).__name__
         hint = ""
         if "Timeout" in err_name or "timeout" in str(e).lower():
-            hint = "（多为文档过长或智谱 API 响应超时，已启用 RAG 精简上下文；可设置 LLM_REQUEST_TIMEOUT=300 后重启）"
+            hint = "（多为文档过长或智谱 API 响应超时，已启用 GraphRAG 精简上下文；可设置 LLM_REQUEST_TIMEOUT=300 后重启）"
+        elif "429" in str(e) or "too many requests" in str(e).lower() or "频率" in str(e):
+            hint = "（智谱 API 触发限速 HTTP 429，已自动重试；若仍失败请增大 API_REQUEST_INTERVAL_SEC / GRAPHRAG_EXTRACT_BATCH_DELAY_SEC 后重启）"
         return jsonify({"code": -1, "msg": f"对话失败：{_format_error(e)}{hint}"})
 
 
@@ -675,7 +704,7 @@ async def run_agent(prompt: str):
 CHAT_AGENT_PROMPT = (
     "你是智能助手，能记住当前对话里用户说过的话。\n"
     "用户消息中「--- 附件 [...] ---」区块是系统已解析的上传文件（PDF/Office 已提取正文，图片经 GLM-4V），请直接基于附件内容回答。\n"
-    "若系统额外提供了「知识库检索结果」，说明已从本会话已上传文档中做了向量相似度检索；请优先依据检索片段作答，并可在必要时结合附件全文。\n"
+    "若系统额外提供了「知识库检索结果」或「GraphRAG 混合检索结果」，说明已从 Milvus / Neo4j 做了文档检索；请优先依据检索结果作答，并可在必要时结合附件全文。\n"
     "用户仅询问已上传文档/文章时，直接根据知识库检索结果与对话内容回答，不要调用 web_search 等联网工具。\n"
     "需要发微信或发邮件时，分别使用 send_message、send_email 工具。\n"
     "涉及时效、新闻、股价、黄金/汇率/商品价格、天气、政策等需要联网核实时，必须先调用 web_search 工具（需服务端已配置 TAVILY_API_KEY），再基于搜索结果回答。\n"
@@ -719,7 +748,7 @@ def _log_llm_system_prompt(
     )
     if rag_context is not None:
         logger.info(
-            "[RAG context only] session_id=%s len=%s\n%s",
+            "[GraphRAG context only] session_id=%s len=%s\n%s",
             session_id or "-",
             len(rag_context),
             _clip_for_log(rag_context or "(empty)"),
@@ -801,7 +830,11 @@ async def run_agent_with_history(
                 state = await agent.ainvoke({"messages": lc_messages})
                 msgs = state.get("messages") or []
                 return _last_assistant_text(msgs), msgs
-    except BaseException:
+    except BaseException as e:
+        logger.warning(
+            "Agent+MCP 调用失败，已降级为纯 LLM（本轮不会出现 ToolMessage）：%s",
+            _format_error(e),
+        )
         return await run_chat_llm_only(
             lc_messages,
             rag_context=rag_context,
