@@ -14,13 +14,15 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from prettytable import PrettyTable
+from dotenv import load_dotenv  # 新增
 
-# 邮箱配置
-EMAIL_ADDRESS = "13385816892@163.com"
-EMAIL_PASSWORD = "ALxN8bt7ttRQ8bJG"
-SMTP_SERVER = "smtp.163.com"
-SMTP_PORT = 465
-
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(dotenv_path=BASE_DIR / ".env") # 自动读取.env写入环境变量
+# 邮箱配置（从 .env 读取，不硬编码）
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.163.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 BASE_DIR = Path(__file__).resolve().parent
 EXPORT_DIR = BASE_DIR / "exports"
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -124,9 +126,9 @@ def _safe_excel_filename(name: str | None) -> str:
     description="联网搜索实时信息（Tavily）。需环境变量 TAVILY_API_KEY；适合新闻、股价、政策等时效问题。",
 )
 def web_search(query: str, max_results: int = 5) -> str:
-    api_key = "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"
+    api_key = os.getenv("TAVILY_API_KEY", "")
     if not api_key:
-        return "❌ 未配置 TAVILY_API_KEY：请在运行 mcp_server 的环境中设置该变量后再试。"
+        return "❌ 未配置 TAVILY_API_KEY：请在 .env 文件或环境中设置该变量后再试。"
 
     max_results = max(1, min(int(max_results or 5), 10))
     try:
@@ -226,5 +228,7 @@ def export_to_excel(headers: list, rows: list, filename: str | None = None) -> s
 if __name__ == "__main__":
     # _get_wechat()
     # send_message("nh","YU")
+    api_key = os.getenv("TAVILY_API_KEY", "")
+
     _port = int(os.getenv("MCP_PORT", "8090"))
     mcp.run(transport="http", host="0.0.0.0", port=_port)
