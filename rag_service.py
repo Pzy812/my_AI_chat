@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-import chat_redis
+import chat_store
 import graphrag
 import rag_milvus
 
@@ -49,7 +49,7 @@ def _group_file_ids_by_mode(
     groups: dict[str, list[str]] = {"rag": [], "graphrag": []}
     fb = normalize_rag_mode(fallback_mode)
     seen: set[str] = set()
-    for meta in chat_redis.get_upload_metas(session_id, file_ids):
+    for meta in chat_store.get_upload_metas(session_id, file_ids):
         fid = (meta.get("file_id") or "").strip()
         if not fid:
             continue

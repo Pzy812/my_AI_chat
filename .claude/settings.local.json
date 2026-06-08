@@ -6,7 +6,11 @@
       "Bash(start \"\" \"C:\\\\Program Files \\(x86\\)\\\\Tencent\\\\WeChat\\\\WeChat.exe\")",
       "Bash(start '' '__TRACKED_VAR__\\\\AppData\\\\Local\\\\Tencent\\\\WeChat\\\\WeChat.exe')",
       "Read(//c/Users/HP/**)",
-      "Bash(find /d -name \"WeChat.exe\" -maxdepth 3)"
+      "Bash(find /d -name \"WeChat.exe\" -maxdepth 3)",
+      "Bash(pip list *)",
+      "Bash(python generate_interview_doc.py)",
+      "Bash(python -X utf8 generate_interview_doc.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python generate_interview_doc.py)"
     ]
   }
 }
