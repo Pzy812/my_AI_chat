@@ -17,13 +17,22 @@ def service_status():
 @bp.route("/service/start", methods=["POST"])
 def service_start():
     try:
-        if not mcp_lifecycle.tracked_mcp_running() and mcp_lifecycle.mcp_port_pids():
-            mcp_lifecycle.kill_mcp_port_processes()
-            time.sleep(0.5)
-        if mcp_lifecycle.mcp_process and mcp_lifecycle.mcp_process.poll() is None:
-            return jsonify({"code": 0, "msg": "服务已在运行中"})
+        mcp_lifecycle.restart_mcp_server()
         mcp_lifecycle.mcp_process = mcp_lifecycle.start_mcp_subprocess()
-        return jsonify({"code": 0, "msg": "MCP 服务启动成功"})
+        deadline = time.time() + 25
+        while time.time() < deadline:
+            if (
+                mcp_lifecycle.mcp_port_open()
+                and mcp_lifecycle.mcp_wechat_tools_status() == "ok"
+            ):
+                return jsonify({"code": 0, "msg": "MCP 服务启动成功"})
+            if (
+                mcp_lifecycle.mcp_process is not None
+                and mcp_lifecycle.mcp_process.poll() is not None
+            ):
+                return jsonify({"code": -1, "msg": "MCP 子进程启动失败，请查看终端日志"})
+            time.sleep(0.35)
+        return jsonify({"code": -1, "msg": "MCP 启动超时或未加载微信工具，请检查 mcp_server.py 日志"})
     except Exception as e:
         return jsonify({"code": -1, "msg": f"启动失败：{str(e)}"})
 

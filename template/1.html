@@ -406,7 +406,7 @@
                     </div>
                     <label class="flex items-start gap-2.5 text-xs sm:text-sm text-slate-400 cursor-pointer select-none max-w-3xl">
                         <input type="checkbox" id="cbToolDebug" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500/40">
-                        <span>显示本轮 MCP 工具调用详情（是否调用 <code class="text-slate-500">send_message</code> / <code class="text-slate-500">send_email</code> 及原始返回，便于判断是模型选错工具还是底层失败）</span>
+                        <span>显示本轮 MCP 工具调用详情（是否调用 <code class="text-slate-500">send_wechat_message</code> / <code class="text-slate-500">send_email</code> 及原始返回，便于判断是模型选错工具还是底层失败）</span>
                     </label>
                     <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 pt-1">
                         <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 shrink-0">知识库模式</span>
@@ -759,11 +759,16 @@
             if (!p || !pre || !sum || !tb) return;
             p.classList.remove('hidden');
             sum.innerHTML =
-                'send_message：<strong class="text-slate-200">' + (tb.used_send_message ? '是' : '否') + '</strong> · ' +
+                'send_wechat_message：<strong class="text-slate-200">' + (tb.used_send_wechat_message ? '是' : '否') + '</strong> · ' +
+                'send_wechat_files：<strong class="text-slate-200">' + (tb.used_send_wechat_files ? '是' : '否') + '</strong> · ' +
+                'get_wechat_messages：<strong class="text-slate-200">' + (tb.used_get_wechat_messages ? '是' : '否') + '</strong> · ' +
                 'send_email：<strong class="text-slate-200">' + (tb.used_send_email ? '是' : '否') + '</strong> · ' +
                 'web_search：<strong class="text-slate-200">' + (tb.used_web_search ? '是' : '否') + '</strong> · ' +
                 'export_to_excel：<strong class="text-slate-200">' + (tb.used_export_to_excel ? '是' : '否') + '</strong> · ' +
-                'format_pretty_table：<strong class="text-slate-200">' + (tb.used_format_pretty_table ? '是' : '否') + '</strong>';
+                'format_pretty_table：<strong class="text-slate-200">' + (tb.used_format_pretty_table ? '是' : '否') + '</strong> · ' +
+                'list_local_directory：<strong class="text-slate-200">' + (tb.used_list_local_directory ? '是' : '否') + '</strong> · ' +
+                'glob_local_files：<strong class="text-slate-200">' + (tb.used_glob_local_files ? '是' : '否') + '</strong> · ' +
+                'read_local_file：<strong class="text-slate-200">' + (tb.used_read_local_file ? '是' : '否') + '</strong>';
             pre.textContent = JSON.stringify(tb.tools || [], null, 2);
         }
 

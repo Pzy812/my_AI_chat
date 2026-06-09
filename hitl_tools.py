@@ -50,8 +50,14 @@ def normalize_interrupts(raw: Any) -> list[dict[str, Any]]:
 
 
 def _args_summary(tool: str, args: dict[str, Any]) -> str:
-    if tool == "send_message":
-        return f"收件人：{args.get('to', '')} · 内容：{_clip(str(args.get('msg', '')))}"
+    if tool == "send_wechat_message":
+        return f"收件人：{args.get('to_name', '')} · 内容：{_clip(str(args.get('content', '')))}"
+    if tool == "send_wechat_files":
+        paths = args.get("file_paths") or []
+        names = ", ".join(str(p) for p in paths[:5])
+        if len(paths) > 5:
+            names += f" 等 {len(paths)} 个"
+        return f"收件人：{args.get('to_name', '')} · 文件：{names or '(无)'}"
     if tool == "send_email":
         return f"收件：{args.get('to_email', '')} · 内容：{_clip(str(args.get('content', '')))}"
     if tool in ("format_pretty_table", "export_to_excel"):

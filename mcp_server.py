@@ -27,27 +27,14 @@ BASE_DIR = Path(__file__).resolve().parent
 EXPORT_DIR = BASE_DIR / "exports"
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-# 初始化（微信客户端延迟加载，便于 Linux/Docker 下仍启动 MCP 其它工具）
+# 初始化（微信工具见 wechat_mcp.py，延迟加载便于 Linux/Docker 下仍启动其它 MCP 工具）
 mcp = FastMCP("wxauto_mcp")
-_wx_client = None
-_wx_unavailable_reason: str | None = None
 
+from wechat_mcp import register_wechat_tools
+from filesystem_mcp import register_filesystem_tools
 
-def _get_wechat():
-    """Windows + 本机微信可用时返回 WeChat 实例；否则返回 None。"""
-    global _wx_client, _wx_unavailable_reason
-    if _wx_unavailable_reason is not None:
-        return None
-    if _wx_client is not None:
-        return _wx_client
-    try:
-        from wxauto4 import WeChat
-
-        _wx_client = WeChat()
-        return _wx_client
-    except Exception as e:
-        _wx_unavailable_reason = str(e)
-        return None
+register_wechat_tools(mcp)
+register_filesystem_tools(mcp)
 
 
 @mcp.tool
@@ -80,32 +67,6 @@ def send_email(to_email: str, content: str) -> str:
         return f"✅ 邮件已发送到：{to_email}"
     except Exception as e:
         return f"❌ 发送失败：{str(e)}"
-
-
-# @mcp.tool(name="send_message", description="向微信好友发送消息")
-@mcp.tool(name="send_message", description="向微信好友发送消息（需用户在前端确认后才会真正发送）")
-def send_message(msg: str, to: str):
-    wx = _get_wechat()
-    if wx is None:
-        return (
-            "❌ 微信不可用（常见于 Docker/Linux 无桌面，或未安装 wxauto4）。"
-            f" 原因: {_wx_unavailable_reason or '未知'}"
-        )
-    try:
-        wx.SendMsg(msg, to)
-        return "✅ 消息发送成功"
-    except Exception as e:
-        return f"❌ 发送失败: {str(e)}"
-
-
-# @mcp.tool(name="get_all_messages", description="获取聊天记录")
-# def get_all_messages(who: str):
-#     try:
-#         wx.ChatWith(who)
-#         msgs = wx.GetAllMessage()
-#         return [{"sender": m.sender, "content": m.content} for m in msgs if m.type == "friend"]
-#     except Exception as e:
-#         return f"❌ 获取失败: {str(e)}"
 
 
 # ---------- 参考 models/output/table_mcp.py + 输出美化.py 的联网与表格能力 ----------

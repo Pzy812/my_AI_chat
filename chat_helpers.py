@@ -164,9 +164,14 @@ def build_tool_debug_from_messages(messages: list) -> dict:
     names = {x["name"] for x in items}
     return {
         "tools": items,
-        "used_send_message": "send_message" in names,
+        "used_send_wechat_message": "send_wechat_message" in names,
+        "used_send_wechat_files": "send_wechat_files" in names,
+        "used_get_wechat_messages": "get_wechat_messages" in names,
         "used_send_email": "send_email" in names,
         "used_web_search": "web_search" in names,
         "used_export_to_excel": "export_to_excel" in names,
         "used_format_pretty_table": "format_pretty_table" in names,
+        "used_list_local_directory": "list_local_directory" in names,
+        "used_glob_local_files": "glob_local_files" in names,
+        "used_read_local_file": "read_local_file" in names,
     }

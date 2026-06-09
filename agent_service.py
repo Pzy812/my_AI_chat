@@ -17,7 +17,10 @@ CHAT_AGENT_PROMPT = (
     "用户消息中「--- 附件 [...] ---」区块是系统已解析的上传文件（PDF/Office 已提取正文，图片经 GLM-4V），请直接基于附件内容回答。\n"
     "若系统额外提供了「知识库检索结果」或「GraphRAG 混合检索结果」，说明已从 Milvus / Neo4j 做了文档检索；请优先依据检索结果作答，并可在必要时结合附件全文。\n"
     "用户仅询问已上传文档/文章时，直接根据知识库检索结果与对话内容回答，不要调用 web_search 等联网工具。\n"
-    "需要发微信或发邮件时，分别使用 send_message、send_email 工具（执行前会由用户在前端确认）。\n"
+    "需要发微信或发邮件时，分别使用 send_wechat_message、send_email 工具（执行前会由用户在前端确认）。\n"
+    "需要查看某好友最近聊天记录时用 get_wechat_messages(to_name, count)；发文件到微信用 send_wechat_files(to_name, file_paths)（file_paths 须为 MCP 服务端本机存在的绝对路径，执行前需用户确认）。\n"
+    "读取本机文件夹/文件：先用 list_local_directory 或 glob_local_files 列出真实绝对路径，再用 read_local_file 读内容；不要把猜测的路径直接传给 send_wechat_files。\n"
+    "用户要把某目录下全部文件发微信时：glob_local_files(directory, pattern='*', recursive=True) → 取 files[].path → send_wechat_files。\n"
     "涉及时效、新闻、股价、黄金/汇率/商品价格、天气、政策等需要联网核实时，必须先调用 web_search 工具（需服务端已配置 TAVILY_API_KEY），再基于搜索结果回答。\n"
     "如果 web_search 工具可用，不要回答“没有实时查询能力”或让用户自行去网站查询。\n"
     "用户要表格展示时用 format_pretty_table；明确要求导出 / 保存为 Excel 时用 export_to_excel，并传入表头 headers 与二维 rows（表格/Excel 执行前需用户确认）。\n"
@@ -301,7 +304,16 @@ async def send_wechat_agent(name: str, content: str) -> None:
             tools = await langchain_tools_from_mcp_session(session)
             agent = create_react_agent(llm, tools)
             await agent.ainvoke(
-                {"messages": [HumanMessage(content=f"给微信名称{name}发消息：{content}")]}
+                {
+                    "messages": [
+                        HumanMessage(
+                            content=(
+                                f"请使用 send_wechat_message 工具，"
+                                f"给微信好友【{name}】发送消息：{content}"
+                            )
+                        )
+                    ]
+                }
             )
 
 

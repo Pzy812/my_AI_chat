@@ -448,7 +448,7 @@ def main() -> int:
     dry_run_sendmsg(wx)
 
     _section("结果")
-    _ok("wxauto4 已能连接本机微信；mcp_server 的 send_message 在相同 Python 下应可用")
+    _ok("wxauto4 已能连接本机微信；mcp_server 的 send_wechat_message 在相同 Python 下应可用")
     _info("下一步: 用同一解释器启动 MCP")
     py = sys.executable
     _info(f'  "{py}" mcp_server.py')
