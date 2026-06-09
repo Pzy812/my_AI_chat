@@ -83,6 +83,7 @@ def send_email(to_email: str, content: str) -> str:
 
 
 # @mcp.tool(name="send_message", description="向微信好友发送消息")
+@mcp.tool(name="send_message", description="向微信好友发送消息（需用户在前端确认后才会真正发送）")
 def send_message(msg: str, to: str):
     wx = _get_wechat()
     if wx is None:

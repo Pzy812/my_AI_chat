@@ -1,15 +1,18 @@
 """对话、上传、会话与 RAG 相关 API。"""
-import asyncio
 from pathlib import Path
 
 from flask import Blueprint, jsonify, request
+
+from async_runner import run_async
 
 import chat_store
 import rag_service
 from agent_service import (
     chat_agent_prompt_with_rag,
+    hitl_available,
     prompt_debug_payload,
     run_agent,
+    run_agent_hitl_resume,
     run_agent_with_history,
 )
 from app_config import LOG_LLM_PROMPT, UPLOADS_DIR
@@ -32,6 +35,31 @@ from file_upload import (
 )
 
 bp = Blueprint("chat", __name__)
+
+
+def _build_chat_success_payload(
+    session_id: str,
+    reply: str,
+    msgs: list,
+    *,
+    rag_context: str,
+    rag_mode: str,
+    include_tool_debug: bool,
+    agent_system_prompt: str,
+) -> dict:
+    attachments = extract_mcp_attachments_from_messages(msgs)
+    out: dict = {"code": 0, "status": "completed", "msg": reply, "session_id": session_id}
+    if attachments:
+        out["mcp_attachments"] = attachments
+    if rag_context:
+        out["rag_used"] = True
+        out["rag_mode"] = rag_mode
+        if rag_mode == "graphrag":
+            out["graphrag_used"] = True
+    if include_tool_debug:
+        out["tool_debug"] = build_tool_debug_from_messages(msgs)
+        out["prompt_debug"] = prompt_debug_payload(agent_system_prompt, rag_context)
+    return out
 
 
 @bp.route("/chat/upload", methods=["POST"])
@@ -64,7 +92,7 @@ def chat_upload():
     dest.write_bytes(data)
 
     try:
-        parsed_text = asyncio.run(parse_uploaded_file(dest, UPLOADS_DIR, kind))
+        parsed_text = run_async(parse_uploaded_file(dest, UPLOADS_DIR, kind))
     except Exception as e:
         dest.unlink(missing_ok=True)
         return jsonify({"code": -1, "msg": f"解析失败：{format_error(e)}"})
@@ -243,7 +271,7 @@ def chat_message():
         history_rows = chat_store.get_recent_messages(session_id)
         lc_messages = dict_history_to_lc_messages(history_rows)
         agent_system_prompt = chat_agent_prompt_with_rag(rag_context)
-        reply, msgs = asyncio.run(
+        reply, msgs, hitl_pending = run_async(
             run_agent_with_history(
                 lc_messages,
                 rag_context=rag_context,
@@ -251,25 +279,44 @@ def chat_message():
                 log_prompt=LOG_LLM_PROMPT or include_tool_debug,
             )
         )
-        attachments = extract_mcp_attachments_from_messages(msgs)
+        if hitl_pending:
+            pending = hitl_pending[0] if hitl_pending else {}
+            return jsonify(
+                {
+                    "code": 0,
+                    "status": "hitl_pending",
+                    "session_id": session_id,
+                    "rag_mode": rag_mode,
+                    "hitl": {
+                        "pending": hitl_pending,
+                        "tool": pending.get("tool"),
+                        "label": pending.get("label"),
+                        "summary": pending.get("summary"),
+                        "args": pending.get("args"),
+                        "hitl_enabled": hitl_available(),
+                    },
+                    "msg": "等待您确认是否执行敏感操作",
+                }
+            )
+        if not reply:
+            return jsonify({"code": -1, "msg": "模型未返回有效回复"})
         chat_store.save_message(
             session_id,
             "assistant",
             reply,
-            mcp_attachments=attachments or None,
+            mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
         )
-        out: dict = {"code": 0, "msg": reply, "session_id": session_id}
-        if attachments:
-            out["mcp_attachments"] = attachments
-        if rag_context:
-            out["rag_used"] = True
-            out["rag_mode"] = rag_mode
-            if rag_mode == "graphrag":
-                out["graphrag_used"] = True
-        if include_tool_debug:
-            out["tool_debug"] = build_tool_debug_from_messages(msgs)
-            out["prompt_debug"] = prompt_debug_payload(agent_system_prompt, rag_context)
-        return jsonify(out)
+        return jsonify(
+            _build_chat_success_payload(
+                session_id,
+                reply,
+                msgs,
+                rag_context=rag_context,
+                rag_mode=rag_mode,
+                include_tool_debug=include_tool_debug,
+                agent_system_prompt=agent_system_prompt,
+            )
+        )
     except Exception as e:
         err_name = type(e).__name__
         hint = ""
@@ -280,13 +327,82 @@ def chat_message():
         return jsonify({"code": -1, "msg": f"对话失败：{format_error(e)}{hint}"})
 
 
+@bp.route("/chat/hitl/resume", methods=["POST"])
+def chat_hitl_resume():
+    """用户在前端确认/取消后，恢复 LangGraph checkpoint 继续 Agent。"""
+    data = request.get_json() or {}
+    session_id = data.get("session_id") or "default"
+    action = (data.get("action") or "").strip().lower()
+    if action not in ("approve", "reject"):
+        return jsonify({"code": -1, "msg": "action 须为 approve 或 reject"})
+    include_tool_debug = bool(data.get("include_tool_debug"))
+    rag_mode = rag_service.normalize_rag_mode(data.get("rag_mode"))
+    rag_query = (data.get("rag_query") or "").strip() or "请继续完成上一轮任务"
+    file_ids = data.get("file_ids") or []
+    if isinstance(file_ids, str):
+        file_ids = [file_ids] if file_ids else []
+    file_ids = [str(x).strip() for x in file_ids if str(x).strip()]
+    rag_context = rag_service.build_rag_context(
+        session_id, rag_query, file_ids=file_ids or None, mode=rag_mode
+    )
+    agent_system_prompt = chat_agent_prompt_with_rag(rag_context)
+    try:
+        reply, msgs, hitl_pending = run_async(
+            run_agent_hitl_resume(
+                session_id,
+                action,
+                rag_context=rag_context,
+                log_prompt=LOG_LLM_PROMPT or include_tool_debug,
+            )
+        )
+        if hitl_pending:
+            pending = hitl_pending[0] if hitl_pending else {}
+            return jsonify(
+                {
+                    "code": 0,
+                    "status": "hitl_pending",
+                    "session_id": session_id,
+                    "rag_mode": rag_mode,
+                    "hitl": {
+                        "pending": hitl_pending,
+                        "tool": pending.get("tool"),
+                        "label": pending.get("label"),
+                        "summary": pending.get("summary"),
+                        "args": pending.get("args"),
+                    },
+                    "msg": "等待您确认是否执行敏感操作",
+                }
+            )
+        if not reply:
+            return jsonify({"code": -1, "msg": "模型未返回有效回复"})
+        chat_store.save_message(
+            session_id,
+            "assistant",
+            reply,
+            mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
+        )
+        return jsonify(
+            _build_chat_success_payload(
+                session_id,
+                reply,
+                msgs,
+                rag_context=rag_context,
+                rag_mode=rag_mode,
+                include_tool_debug=include_tool_debug,
+                agent_system_prompt=agent_system_prompt,
+            )
+        )
+    except Exception as e:
+        return jsonify({"code": -1, "msg": f"HITL 恢复失败：{format_error(e)}"})
+
+
 @bp.route("/ai/run", methods=["POST"])
 def ai_run():
     prompt = (request.get_json() or {}).get("prompt", "")
     if not prompt:
         return jsonify({"code": -1, "msg": "请输入指令"})
     try:
-        result = asyncio.run(run_agent(prompt))
+        result = run_async(run_agent(prompt))
         return jsonify({"code": 0, "msg": result})
     except Exception as e:
         return jsonify({"code": -1, "msg": f"执行失败：{format_error(e)}"})

@@ -1,6 +1,6 @@
 """LangGraph AsyncPostgresSaver：Agent 运行 checkpoint（与业务 chat 表分离）。"""
 from __future__ import annotations
-
+import asyncio
 import logging
 from typing import Any
 
@@ -22,13 +22,19 @@ def get_checkpointer() -> Any | None:
 
 
 async def init_checkpointer() -> bool:
-    """启动时创建连接池并 setup checkpoint 表（仅一次）。"""
+    """启动时创建连接池并 setup checkpoint 表（须在 async_runner 后台 loop 内调用）。"""
     global _checkpointer, _pool, _ready
     if not enabled():
         logger.info("Agent Checkpointer 未启用（需 POSTGRES_URI + AGENT_CHECKPOINT_ENABLED=1）")
         return False
+    current_loop = asyncio.get_running_loop()
     if _ready and _checkpointer is not None:
-        return True
+        bound = getattr(_checkpointer, "loop", None)
+        if bound is not None and bound is not current_loop:
+            logger.warning("Checkpointer 绑定在旧 event loop，正在重新初始化…")
+            await shutdown_checkpointer()
+        else:
+            return True
     try:
         from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
         from psycopg.rows import dict_row

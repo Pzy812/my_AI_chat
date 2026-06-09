@@ -1,15 +1,17 @@
 """Flask 应用入口：创建 app 并启动 Web 服务。"""
-import asyncio
 import sys
 
-# Windows 强制使用 SelectorEventLoop（解决 psycopg 不兼容）
+# Windows 下 psycopg 需要 SelectorEventLoop（须在创建任何 loop 之前）
 if sys.platform == "win32":
+    import asyncio
+
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from flask import Flask
 from flask_cors import CORS
 
 from app_config import BASE_DIR, FLASK_HOST, FLASK_PORT, MCP_HOST, MCP_PORT, MCP_URL
+from async_runner import setup_async_services
 import mcp_lifecycle
 from routes import register_routes
 
@@ -20,35 +22,12 @@ def create_app() -> Flask:
     from chat_store import init_chat_store
 
     init_chat_store()
-    _ensure_agent_checkpointer()
+    setup_async_services()
     register_routes(application)
     return application
 
 
-def _ensure_agent_checkpointer() -> None:
-    from agent_checkpointer import init_checkpointer
-
-    try:
-        asyncio.get_running_loop()
-        return
-    except RuntimeError:
-        pass
-    try:
-        asyncio.run(init_checkpointer())
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(init_checkpointer())
-        finally:
-            loop.close()
-
-
 app = create_app()
-
-
-def _startup_async_services() -> None:
-    """保留供外部 WSGI 启动脚本调用（create_app 已自动初始化）。"""
-    _ensure_agent_checkpointer()
 
 
 if __name__ == "__main__":

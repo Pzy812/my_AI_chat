@@ -95,17 +95,11 @@ def clear_session(session_id: str) -> None:
 
 
 def _clear_agent_checkpoint(session_id: str) -> None:
-    import asyncio
-
     from agent_checkpointer import reset_agent_thread
+    from async_runner import run_async
 
     try:
-        asyncio.get_running_loop()
-        return
-    except RuntimeError:
-        pass
-    try:
-        asyncio.run(reset_agent_thread(session_id))
+        run_async(reset_agent_thread(session_id), timeout=15)
     except Exception:
         pass
 

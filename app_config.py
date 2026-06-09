@@ -53,3 +53,4 @@ AGENT_CHECKPOINT_ENABLED = os.getenv("AGENT_CHECKPOINT_ENABLED", "1").strip().lo
     "no",
 )
 UPLOAD_META_TTL_SEC = int(os.getenv("UPLOAD_META_TTL_SEC", str(7 * 24 * 3600)))
+HITL_ENABLED = os.getenv("HITL_ENABLED", "1").strip().lower() not in ("0", "false", "no")

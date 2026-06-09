@@ -111,6 +111,53 @@
             border-color: rgba(56,189,248,0.35);
             background: rgba(15,23,42,0.7);
         }
+        .hitl-panel {
+            margin-top: 0.75rem;
+            padding: 0.85rem 1rem;
+            border-radius: 14px;
+            border: 1px solid rgba(251,191,36,0.35);
+            background: linear-gradient(135deg, rgba(251,191,36,0.12) 0%, rgba(15,23,42,0.6) 100%);
+        }
+        .hitl-panel .hitl-title {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: #fcd34d;
+            margin-bottom: 0.35rem;
+        }
+        .hitl-panel .hitl-summary {
+            font-size: 0.8125rem;
+            color: #cbd5e1;
+            line-height: 1.55;
+            margin-bottom: 0.75rem;
+            word-break: break-word;
+        }
+        .hitl-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .hitl-btn-approve {
+            background: linear-gradient(135deg, #059669, #10b981);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 0.45rem 1rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .hitl-btn-approve:hover { filter: brightness(1.08); }
+        .hitl-btn-reject {
+            background: rgba(51,65,85,0.9);
+            color: #fca5a5;
+            border: 1px solid rgba(248,113,113,0.35);
+            border-radius: 10px;
+            padding: 0.45rem 1rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .hitl-btn-reject:hover { background: rgba(71,85,105,0.95); }
         .bubble-label {
             font-size: 0.72rem;
             font-weight: 600;
@@ -432,6 +479,7 @@
     <script>
         let chatAwaitingReply = false;
         let pendingUploads = [];
+        let hitlContext = null;
         const RAG_MODE_STORAGE_KEY = 'aiChatRagMode';
 
         window.onload = function () {
@@ -935,6 +983,97 @@
             }
         }
 
+        function renderHitlPanel(hitl) {
+            const item = (hitl && hitl.pending && hitl.pending[0]) || hitl || {};
+            const label = item.label || hitl.label || item.tool || '敏感操作';
+            const summary = item.summary || hitl.summary || '模型请求执行一项需您确认的操作。';
+            return (
+                '<div class="hitl-panel">' +
+                '<div class="hitl-title"><i class="fa-solid fa-user-check mr-1.5"></i>待您确认 · ' + escapeHtml(label) + '</div>' +
+                '<div class="hitl-summary">' + escapeHtml(summary) + '</div>' +
+                '<div class="hitl-actions">' +
+                '<button type="button" class="hitl-btn-approve" data-hitl="approve"><i class="fa-solid fa-check mr-1"></i>确认执行</button>' +
+                '<button type="button" class="hitl-btn-reject" data-hitl="reject"><i class="fa-solid fa-xmark mr-1"></i>取消</button>' +
+                '</div></div>'
+            );
+        }
+
+        function mountHitlPanel(pendingRow, hitl, ctx) {
+            hitlContext = ctx;
+            const bubble = pendingRow.querySelector('.bubble.pending-reply') || pendingRow.querySelector('.bubble');
+            if (!bubble) return;
+            const labelEl = bubble.querySelector('.bubble-label');
+            if (labelEl) labelEl.textContent = '待确认操作';
+            let body = bubble.querySelector('.hitl-body');
+            if (!body) {
+                body = document.createElement('div');
+                body.className = 'hitl-body';
+                bubble.appendChild(body);
+            }
+            const spin = bubble.querySelector('.fa-spin');
+            if (spin && spin.parentElement) spin.parentElement.remove();
+            body.innerHTML = renderHitlPanel(hitl);
+            body.querySelectorAll('[data-hitl]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    resumeHitl(btn.getAttribute('data-hitl'));
+                });
+            });
+            const log = document.getElementById('chatLog');
+            if (log) log.scrollTop = log.scrollHeight;
+        }
+
+        async function resumeHitl(action) {
+            if (!hitlContext || chatAwaitingReply === false) return;
+            const act = action === 'approve' ? 'approve' : 'reject';
+            setChatStatusLine(act === 'approve' ? '已确认，正在执行…' : '已取消，正在生成回复…');
+            const pendingRow = document.getElementById('chatPendingAssistant');
+            if (pendingRow) {
+                const bubble = pendingRow.querySelector('.bubble');
+                if (bubble) {
+                    let body = bubble.querySelector('.hitl-body');
+                    if (!body) {
+                        body = document.createElement('div');
+                        body.className = 'hitl-body';
+                        bubble.appendChild(body);
+                    }
+                    body.innerHTML = '<div class="text-sky-300 text-sm py-2"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>处理中…</div>';
+                }
+            }
+            let res;
+            try {
+                res = await api('/chat/hitl/resume', {
+                    session_id: hitlContext.sessionId,
+                    action: act,
+                    rag_mode: hitlContext.ragMode,
+                    rag_query: hitlContext.ragQuery,
+                    file_ids: hitlContext.fileIds,
+                    include_tool_debug: hitlContext.wantDebug
+                });
+            } catch (e) {
+                res = { code: -1, msg: String(e) };
+            }
+            if (res.code === 0 && res.status === 'hitl_pending') {
+                if (pendingRow) mountHitlPanel(pendingRow, res.hitl, hitlContext);
+                setChatStatusLine('仍有待确认的操作');
+                showToast('请继续确认下一项操作', 'success');
+                return;
+            }
+            const savedWantDebug = hitlContext ? hitlContext.wantDebug : false;
+            hitlContext = null;
+            if (pendingRow) pendingRow.remove();
+            await loadChatHistory();
+            await loadSessions();
+            if (res.code === 0) {
+                const modeText = res.rag_mode === 'graphrag' ? 'GraphRAG' : (res.rag_used ? 'RAG' : '');
+                setChatStatusLine(res.rag_used ? ('已完成 · 已使用 ' + modeText + ' 检索') : '已完成');
+                if (savedWantDebug && res.tool_debug) showToolDebug(res.tool_debug);
+            } else {
+                setChatStatusLine(res.msg || '操作失败');
+                showToast(res.msg || '操作失败', 'error');
+            }
+            setChatUiLocked(false);
+        }
+
         async function sendChatMessage() {
             if (chatAwaitingReply) return;
             const ta = document.getElementById('chatInput');
@@ -973,19 +1112,34 @@
 
             setChatStatusLine('AI 处理中，请稍候…');
 
+            const hitlCtx = {
+                sessionId: getSessionId(),
+                ragMode: getRagMode(),
+                ragQuery: text,
+                fileIds: fileIds.slice(),
+                wantDebug: wantDebug
+            };
+
             let res;
             try {
                 res = await api('/chat/message', {
-                    session_id: getSessionId(),
+                    session_id: hitlCtx.sessionId,
                     message: text,
                     file_ids: fileIds,
-                    rag_mode: getRagMode(),
+                    rag_mode: hitlCtx.ragMode,
                     include_tool_debug: wantDebug
                 });
                 pendingUploads = [];
                 renderPendingUploads();
             } catch (e) {
                 res = { code: -1, msg: String(e) };
+            }
+
+            if (res.code === 0 && res.status === 'hitl_pending') {
+                mountHitlPanel(pending, res.hitl, hitlCtx);
+                setChatStatusLine('等待您确认是否执行：' + (res.hitl && (res.hitl.label || res.hitl.tool) || '敏感操作'));
+                showToast('请确认或取消后再继续', 'success');
+                return;
             }
 
             const pend = document.getElementById('chatPendingAssistant');
@@ -996,7 +1150,7 @@
 
             if (res.code === 0) {
                 const modeText = res.rag_mode === 'graphrag' ? 'GraphRAG' : (res.rag_used ? 'RAG' : '');
-                setChatStatusLine(res.rag_used ? ('已写入 Redis · 已使用 ' + modeText + ' 检索') : '已写入 Redis');
+                setChatStatusLine(res.rag_used ? ('已写入 · 已使用 ' + modeText + ' 检索') : '已写入');
                 if (wantDebug && res.tool_debug) showToolDebug(res.tool_debug);
             } else {
                 setChatStatusLine(res.msg || '发送失败');
