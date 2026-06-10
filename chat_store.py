@@ -87,6 +87,53 @@ def get_recent_messages(session_id: str, limit: int | None = None) -> list[dict[
     return msgs[-cap:] if len(msgs) > cap else msgs
 
 
+def count_messages(session_id: str) -> int:
+    if _pg_ok():
+        return chat_postgres.count_messages(session_id)
+    return chat_redis.count_messages(session_id)
+
+
+def fetch_messages_range(session_id: str, offset: int, limit: int) -> list[dict[str, Any]]:
+    if _pg_ok():
+        return chat_postgres.fetch_messages_range(session_id, offset, limit)
+    return chat_redis.fetch_messages_range(session_id, offset, limit)
+
+
+def get_summary_meta(session_id: str) -> dict[str, Any]:
+    cached = chat_redis.get_session_summary_meta(session_id)
+    if cached.get("context_summary") or cached.get("summary_message_count"):
+        return cached
+    if _pg_ok():
+        meta = chat_postgres.get_session_summary_meta(session_id)
+        if meta.get("context_summary") or meta.get("summary_message_count"):
+            chat_redis.set_session_summary_meta(
+                session_id,
+                context_summary=meta.get("context_summary") or "",
+                summary_through_index=int(meta.get("summary_message_count") or 0),
+            )
+        return meta
+    return cached
+
+
+def save_summary_meta(
+    session_id: str,
+    *,
+    context_summary: str,
+    summary_through_index: int,
+) -> None:
+    if _pg_ok():
+        chat_postgres.set_session_summary_meta(
+            session_id,
+            context_summary=context_summary,
+            summary_through_index=summary_through_index,
+        )
+    chat_redis.set_session_summary_meta(
+        session_id,
+        context_summary=context_summary,
+        summary_through_index=summary_through_index,
+    )
+
+
 def clear_session(session_id: str) -> None:
     if _pg_ok():
         chat_postgres.clear_session(session_id)

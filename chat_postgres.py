@@ -82,7 +82,8 @@ def init_schema() -> None:
     CREATE TABLE IF NOT EXISTS chat_sessions (
         session_id TEXT PRIMARY KEY,
         title TEXT NOT NULL DEFAULT '',
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        extras JSONB NOT NULL DEFAULT '{}'::jsonb
     );
     CREATE TABLE IF NOT EXISTS chat_messages (
         id BIGSERIAL PRIMARY KEY,
@@ -104,6 +105,9 @@ def init_schema() -> None:
     """
     with _get_pool().connection() as conn:
         conn.execute(ddl)
+        conn.execute(
+            "ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS extras JSONB NOT NULL DEFAULT '{}'::jsonb"
+        )
         conn.commit()
     _schema_ready = True
     logger.info("PostgreSQL 聊天表已就绪")
@@ -174,6 +178,29 @@ def fetch_messages(
     return [_msg_row_to_dict(r) for r in rows]
 
 
+def fetch_messages_range(
+    session_id: str,
+    offset: int,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """按时间正序返回会话内 [offset, offset+limit) 条消息（用于摘要增量读取）。"""
+    sid = _norm_session_id(session_id)
+    off = max(0, offset)
+    lim = max(0, limit)
+    if lim <= 0:
+        return []
+    sql = """
+        SELECT role, content, extras
+        FROM chat_messages
+        WHERE session_id = %s
+        ORDER BY created_at ASC, id ASC
+        OFFSET %s LIMIT %s
+    """
+    with _get_pool().connection() as conn:
+        rows = conn.execute(sql, (sid, off, lim)).fetchall()
+    return [_msg_row_to_dict(r) for r in rows]
+
+
 def count_messages(session_id: str) -> int:
     sid = _norm_session_id(session_id)
     with _get_pool().connection() as conn:
@@ -182,6 +209,57 @@ def count_messages(session_id: str) -> int:
             (sid,),
         ).fetchone()
     return int(row["n"]) if row else 0
+
+
+def get_session_summary_meta(session_id: str) -> dict[str, Any]:
+    sid = _norm_session_id(session_id)
+    with _get_pool().connection() as conn:
+        row = conn.execute(
+            "SELECT extras FROM chat_sessions WHERE session_id = %s",
+            (sid,),
+        ).fetchone()
+    extras = (row or {}).get("extras") or {}
+    if isinstance(extras, str):
+        try:
+            extras = json.loads(extras)
+        except Exception:
+            extras = {}
+    if not isinstance(extras, dict):
+        extras = {}
+    count = extras.get("summary_message_count")
+    if count is None:
+        count = extras.get("summary_through_index")
+    return {
+        "context_summary": extras.get("context_summary") or "",
+        "summary_message_count": int(count or 0),
+    }
+
+
+def set_session_summary_meta(
+    session_id: str,
+    *,
+    context_summary: str,
+    summary_through_index: int,
+) -> None:
+    sid = _norm_session_id(session_id)
+    count = max(0, summary_through_index)
+    patch = {
+        "context_summary": context_summary,
+        "summary_message_count": count,
+        "summary_through_index": count,
+    }
+    with _get_pool().connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO chat_sessions (session_id, title, updated_at, extras)
+            VALUES (%s, %s, NOW(), %s::jsonb)
+            ON CONFLICT (session_id) DO UPDATE SET
+                extras = COALESCE(chat_sessions.extras, '{}'::jsonb) || EXCLUDED.extras,
+                updated_at = NOW()
+            """,
+            (sid, sid, json.dumps(patch, ensure_ascii=False)),
+        )
+        conn.commit()
 
 
 def clear_session(session_id: str) -> None:

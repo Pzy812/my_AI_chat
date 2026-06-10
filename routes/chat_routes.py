@@ -29,10 +29,10 @@ from app_utils import format_error
 from chat_helpers import (
     build_tool_debug_from_messages,
     build_user_message_text,
-    dict_history_to_lc_messages,
     extract_mcp_attachments_from_messages,
     upload_meta_for_message,
 )
+from chat_summary import prepare_agent_lc_messages
 from file_upload import (
     ALLOWED_EXT,
     DOC_EXT,
@@ -357,18 +357,18 @@ def chat_message():
             ctx["full_text"],
             user_uploads=user_uploads,
         )
-        history_rows = chat_store.get_recent_messages(session_id)
-        lc_messages = dict_history_to_lc_messages(history_rows)
         agent_system_prompt = chat_agent_prompt_with_rag(rag_context)
-        reply, msgs, hitl_pending = run_async(
-            run_agent_with_history(
+
+        async def _invoke_chat():
+            lc_messages = await prepare_agent_lc_messages(session_id)
+            return await run_agent_with_history(
                 lc_messages,
                 rag_context=rag_context,
                 session_id=session_id,
                 log_prompt=LOG_LLM_PROMPT or include_tool_debug,
-            ),
-            run_key=session_id,
-        )
+            )
+
+        reply, msgs, hitl_pending = run_async(_invoke_chat(), run_key=session_id)
         if hitl_pending:
             pending = hitl_pending[0] if hitl_pending else {}
             return jsonify(
@@ -432,15 +432,17 @@ def chat_message_stream():
         ctx["full_text"],
         user_uploads=user_uploads,
     )
-    history_rows = chat_store.get_recent_messages(session_id)
-    lc_messages = dict_history_to_lc_messages(history_rows)
+    async def _stream_with_summary():
+        lc_messages = await prepare_agent_lc_messages(session_id)
+        async for event in stream_agent_with_history(
+            lc_messages,
+            rag_context=rag_context,
+            session_id=session_id,
+            log_prompt=LOG_LLM_PROMPT or include_tool_debug,
+        ):
+            yield event
 
-    async_gen = stream_agent_with_history(
-        lc_messages,
-        rag_context=rag_context,
-        session_id=session_id,
-        log_prompt=LOG_LLM_PROMPT or include_tool_debug,
-    )
+    async_gen = _stream_with_summary()
 
     def on_result(event: dict):
         reply = event.get("reply")

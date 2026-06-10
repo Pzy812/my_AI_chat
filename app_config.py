@@ -47,6 +47,18 @@ CHAT_AGENT_CONTEXT_MESSAGES = int(
         os.getenv("REDIS_CHAT_MAX_MESSAGES", "80"),
     )
 )
+# 超过 N 轮用户发言时，对更早对话做小模型摘要（保留最近 CHAT_SUMMARY_KEEP_ROUNDS 轮原文）
+CHAT_SUMMARY_ENABLED = os.getenv("CHAT_SUMMARY_ENABLED", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+)
+CHAT_SUMMARY_ROUNDS = int(os.getenv("CHAT_SUMMARY_ROUNDS", "20"))
+CHAT_SUMMARY_KEEP_ROUNDS = int(
+    os.getenv("CHAT_SUMMARY_KEEP_ROUNDS", os.getenv("CHAT_SUMMARY_ROUNDS", "20"))
+)
+CHAT_SUMMARY_MAX_INPUT_CHARS = int(os.getenv("CHAT_SUMMARY_MAX_INPUT_CHARS", "48000"))
+CHAT_SUMMARY_MAX_MSG_CHARS = int(os.getenv("CHAT_SUMMARY_MAX_MSG_CHARS", "6000"))
 AGENT_CHECKPOINT_ENABLED = os.getenv("AGENT_CHECKPOINT_ENABLED", "1").strip().lower() not in (
     "0",
     "false",

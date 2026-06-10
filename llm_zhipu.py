@@ -98,3 +98,16 @@ def make_chat_llm(**kwargs: Any) -> ChatZhipuAI:
     defaults = {"model": "glm-4", "temperature": 0.0}
     defaults.update(kwargs)
     return ChatZhipuAI(**defaults)
+
+
+def make_summary_llm(**kwargs: Any) -> ChatZhipuAI:
+    """会话历史摘要：默认 glm-4-flash，复用 ZHIPUAI_API_KEY。"""
+    model = os.getenv("ZHIPU_SUMMARY_MODEL", "glm-4-flash").strip() or "glm-4-flash"
+    timeout = float(os.getenv("ZHIPU_SUMMARY_TIMEOUT", "90"))
+    defaults = {
+        "model": model,
+        "temperature": 0.0,
+        "request_timeout": timeout,
+    }
+    defaults.update(kwargs)
+    return ChatZhipuAI(**defaults)

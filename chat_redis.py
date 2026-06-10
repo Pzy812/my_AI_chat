@@ -212,6 +212,56 @@ def clear_session(session_id: str) -> None:
     r.delete(f"{REDIS_SESSION_META_PREFIX}{sid}")
 
 
+def get_session_summary_meta(session_id: str) -> dict[str, Any]:
+    sid = _norm_sid(session_id)
+    h = get_redis().hgetall(f"{REDIS_SESSION_META_PREFIX}{sid}") or {}
+    count = h.get("summary_message_count") or h.get("summary_through_index") or 0
+    return {
+        "context_summary": h.get("context_summary") or "",
+        "summary_message_count": int(count),
+    }
+
+
+def set_session_summary_meta(
+    session_id: str,
+    *,
+    context_summary: str,
+    summary_through_index: int,
+) -> None:
+    sid = _norm_sid(session_id)
+    r = get_redis()
+    meta_key = f"{REDIS_SESSION_META_PREFIX}{sid}"
+    count = str(max(0, summary_through_index))
+    r.hset(
+        meta_key,
+        mapping={
+            "context_summary": context_summary,
+            "summary_message_count": count,
+            "summary_through_index": count,
+        },
+    )
+
+
+def clear_session_summary_meta(session_id: str) -> None:
+    sid = _norm_sid(session_id)
+    r = get_redis()
+    meta_key = f"{REDIS_SESSION_META_PREFIX}{sid}"
+    r.hdel(meta_key, "context_summary", "summary_message_count", "summary_through_index")
+
+
+def count_messages(session_id: str) -> int:
+    return get_redis().llen(_key(session_id))
+
+
+def fetch_messages_range(session_id: str, offset: int, limit: int) -> list[dict[str, Any]]:
+    off = max(0, offset)
+    lim = max(0, limit)
+    if lim <= 0:
+        return []
+    raw = get_redis().lrange(_key(session_id), off, off + lim - 1)
+    return _parse_messages(raw)
+
+
 def set_session_title(session_id: str, title: str) -> None:
     sid = _norm_sid(session_id)
     r = get_redis()
