@@ -7,3 +7,9 @@
 <img width="1230" height="876" alt="c6e34aa7c7f7c08fb1df9a7d04c7b908" src="https://github.com/user-attachments/assets/40effeea-fd0d-48c4-9e77-74813a842650" />
 <img width="1601" height="1020" alt="cfa8542710e8a0d6b32d8e9c77eda115" src="https://github.com/user-attachments/assets/829308b6-f5a4-4efe-a5e4-25ce8daa47fc" />
 <img width="1854" height="855" alt="e0125eb5e8d6d0d77b6cf2ea6f1f9a86" src="https://github.com/user-attachments/assets/e40a9506-1a85-4b58-ae3c-91a8b3c401d3" />
+增加了agent的推理流程图片显示在前端界面<img width="830" height="770" alt="fe8c36d62294242de4ecf4d810ed9094" src="https://github.com/user-attachments/assets/90315bf2-ed5e-46f3-bbbb-68c8f57c412e" />
+
+<img width="797" height="617" alt="2ca56bf23006872978a6cb22133343f6" src="https://github.com/user-attachments/assets/7a99b372-786d-47cb-acff-7b2be6ae6b19" />
+
+<img width="843" height="696" alt="331cb935bf0177a1d04f2d00ad696f38" src="https://github.com/user-attachments/assets/2d8ea44b-0d9d-409f-8e22-c68aaf5f5770" />
+
