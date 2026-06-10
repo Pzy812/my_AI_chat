@@ -38,4 +38,10 @@ if __name__ == "__main__":
             f"警告: MCP 未在 {MCP_PORT} 端口就绪，对话将降级为纯模型（附件问答仍可用）。"
             " 可手动运行: python mcp_server.py"
         )
-    app.run(host=FLASK_HOST, port=FLASK_PORT, debug=False, use_reloader=False)
+    app.run(
+        host=FLASK_HOST,
+        port=FLASK_PORT,
+        debug=False,
+        use_reloader=False,
+        threaded=True,
+    )

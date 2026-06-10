@@ -1,15 +1,15 @@
 """RAG：分块 → 智谱 Embedding → Milvus 分层存储。
 
 层级结构（在 Attu 中可见）：
-  Database  ``rag_{session_id}``   — 一个会话一层
-  Collection ``doc_{file_id}``     — 一篇文档一个集合（仅该文档的向量块）
+  Database   ``{session_id}``              — 一会话一库
+  Collection ``rag_{文件名}_{file_id}``   — 普通 RAG 文档向量
 
-旧版单集合 ``ai_chat_rag`` 不再写入，可在 Attu 中手动删除。
+GraphRAG 向量集合 ``graphrag_{文件名}_{file_id}`` 与 RAG 共用同一会话库（见 graphrag.py）。
+旧版 ``rag_*`` / ``graphrag_*`` 会话库及 ``doc_*`` / ``graph_*`` 集合不再写入，可在 Attu 中手动清理。
 """
 from __future__ import annotations
 
 import os
-import re
 import time
 from typing import Any
 
@@ -18,12 +18,20 @@ from env_config import get_zhipuai_api_key
 
 from api_throttle import call_with_retry
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from milvus_naming import (
+    LEGACY_RAG_COLLECTION_PREFIX,
+    RAG_COLLECTION_PREFIX,
+    is_legacy_rag_collection,
+    is_rag_collection,
+    norm_session_id,
+    rag_collection_name,
+    resolve_rag_collection,
+    session_database_name,
+)
 from pymilvus import MilvusClient
 from zai import ZhipuAiClient as ZhipuAI # ✅ 新版官方标准
 
 MILVUS_URI = os.getenv("MILVUS_URI", "http://127.0.0.1:19530")
-MILVUS_DB_PREFIX = os.getenv("MILVUS_DB_PREFIX", "rag")
-MILVUS_DOC_PREFIX = os.getenv("MILVUS_DOC_PREFIX", "doc")
 EMBEDDING_MODEL = os.getenv("RAG_EMBEDDING_MODEL", "embedding-3")
 EMBEDDING_DIM = int(os.getenv("RAG_EMBEDDING_DIM", "1024"))
 CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "600"))
@@ -35,34 +43,15 @@ RAG_ENABLED = os.getenv("RAG_ENABLED", "1").strip().lower() not in ("0", "false"
 
 _milvus_root: MilvusClient | None = None
 _zhipu: ZhipuAI | None = None
-_slug_re = re.compile(r"[^0-9a-zA-Z_]+")
 
 
 def rag_enabled() -> bool:
     return RAG_ENABLED
 
 
-def _slug(value: str, *, max_len: int = 56, prefix_if_digit: str = "d") -> str:
-    s = _slug_re.sub("_", (value or "x").strip())[:max_len].strip("_") or "x"
-    if s[0].isdigit():
-        s = f"{prefix_if_digit}_{s}"
-    return s
-
-
-def _norm_session_id(session_id: str) -> str:
-    return (session_id or "default").strip() or "default"
-
-
-def session_database_name(session_id: str) -> str:
-    """会话级 Milvus Database，例如 rag_default。"""
-    sid = _slug(_norm_session_id(session_id), max_len=48, prefix_if_digit="s")
-    return f"{MILVUS_DB_PREFIX}_{sid}"
-
-
-def document_collection_name(file_id: str) -> str:
-    """文档级 Collection，例如 doc_8a0f679ce441。"""
-    fid = _slug((file_id or "").strip(), max_len=56, prefix_if_digit="f")
-    return f"{MILVUS_DOC_PREFIX}_{fid}"
+def document_collection_name(file_id: str, source_name: str = "") -> str:
+    """文档级 Collection（兼容旧调用方，优先使用文件名）。"""
+    return rag_collection_name(source_name or file_id, file_id)
 
 
 def _zhipu_client() -> ZhipuAI:
@@ -104,12 +93,16 @@ def _ensure_doc_collection(client: MilvusClient, collection_name: str) -> None:
 
 
 def list_document_collections(session_id: str) -> list[str]:
-    """列出某会话下所有文档集合名。"""
+    """列出某会话下所有 RAG 文档集合名（含旧版 doc_*）。"""
     db_name = session_database_name(session_id)
     _ensure_session_database(db_name)
     client = _client_for_database(db_name)
-    prefix = f"{MILVUS_DOC_PREFIX}_"
-    return sorted(c for c in client.list_collections() if c.startswith(prefix))
+    legacy_prefix = f"{LEGACY_RAG_COLLECTION_PREFIX}_"
+    return sorted(
+        c
+        for c in client.list_collections()
+        if is_rag_collection(c) or c.startswith(legacy_prefix)
+    )
 
 
 def split_text(text: str) -> list[str]:
@@ -147,27 +140,51 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     return vectors
 
 
-def delete_file_chunks(session_id: str, file_id: str) -> None:
+def delete_file_chunks(
+    session_id: str,
+    file_id: str,
+    source_name: str | None = None,
+) -> None:
     if not rag_enabled():
         return
     fid = (file_id or "").strip()
     if not fid:
         return
     db_name = session_database_name(session_id)
-    coll_name = document_collection_name(fid)
+    coll_name = resolve_rag_collection(session_id, fid, source_name)
     _ensure_session_database(db_name)
     client = _client_for_database(db_name)
     if client.has_collection(coll_name):
         client.drop_collection(coll_name)
+    legacy = f"{LEGACY_RAG_COLLECTION_PREFIX}_{fid}"
+    if client.has_collection(legacy):
+        client.drop_collection(legacy)
+
+
+def _maybe_drop_empty_session_database(session_id: str) -> None:
+    db_name = session_database_name(session_id)
+    root = _root_client()
+    if db_name not in set(root.list_databases()):
+        return
+    client = _client_for_database(db_name)
+    if not client.list_collections():
+        root.drop_database(db_name)
 
 
 def delete_session_chunks(session_id: str) -> None:
+    """删除会话下所有 RAG 集合（不删除 graphrag_* 集合）。"""
     if not rag_enabled():
         return
     db_name = session_database_name(session_id)
     root = _root_client()
-    if db_name in set(root.list_databases()):
-        root.drop_database(db_name)
+    if db_name not in set(root.list_databases()):
+        return
+    client = _client_for_database(db_name)
+    legacy_prefix = f"{LEGACY_RAG_COLLECTION_PREFIX}_"
+    for coll in list(client.list_collections()):
+        if is_rag_collection(coll) or coll.startswith(legacy_prefix):
+            client.drop_collection(coll)
+    _maybe_drop_empty_session_database(session_id)
 
 
 def index_document(
@@ -179,23 +196,23 @@ def index_document(
     """一篇文档 → 独立 Milvus Collection（位于会话 Database 下）。"""
     if not rag_enabled():
         return {"enabled": False, "chunks": 0}
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     fid = (file_id or "").strip()
     if not fid:
         return {"enabled": True, "chunks": 0, "error": "缺少 file_id"}
 
     chunks = split_text(text)
+    coll_name = rag_collection_name(source_name, fid)
     if not chunks:
-        delete_file_chunks(sid, fid)
+        delete_file_chunks(sid, fid, source_name)
         return {
             "enabled": True,
             "chunks": 0,
             "database": session_database_name(sid),
-            "collection": document_collection_name(fid),
+            "collection": coll_name,
         }
 
     db_name = session_database_name(sid)
-    coll_name = document_collection_name(fid)
     client = _client_for_database(db_name)
     _ensure_doc_collection(client, coll_name)
 
@@ -258,9 +275,12 @@ def _search_one_collection(
 
 
 def _file_id_from_collection(coll_name: str) -> str:
-    prefix = f"{MILVUS_DOC_PREFIX}_"
-    if coll_name.startswith(prefix):
-        return coll_name[len(prefix) :]
+    if is_legacy_rag_collection(coll_name):
+        return coll_name[len(f"{LEGACY_RAG_COLLECTION_PREFIX}_") :]
+    if is_rag_collection(coll_name):
+        parts = coll_name.split("_")
+        if len(parts) >= 2:
+            return parts[-1]
     return coll_name
 
 
@@ -275,7 +295,7 @@ def search_similar(
     q = (query or "").strip()
     if not q:
         return []
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     limit = top_k or RAG_TOP_K
     query_vec = embed_texts([q])[0]
 
@@ -284,7 +304,11 @@ def search_similar(
     client = _client_for_database(db_name)
 
     if file_ids:
-        targets = [document_collection_name(fid) for fid in file_ids if str(fid).strip()]
+        targets = [
+            resolve_rag_collection(sid, str(fid).strip())
+            for fid in file_ids
+            if str(fid).strip()
+        ]
     else:
         targets = list_document_collections(sid)
 
@@ -337,7 +361,7 @@ def build_rag_context(
 
 def list_session_rag_index(session_id: str) -> list[dict[str, Any]]:
     """列出会话下已索引的文档（供调试或 API）。"""
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     db_name = session_database_name(sid)
     if db_name not in set(_root_client().list_databases()):
         return []

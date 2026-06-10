@@ -6,7 +6,7 @@
   1. split_text 拆分正文
   2. 对每个块调用 LLM 抽取 entities + relations
   3. 合并去重后清空 Neo4j 单库并写入当前文档图谱（社区版仅保留最新一份）
-  4. 为实体/关系文本生成 embedding，写入 Milvus graph_{file_id} 集合
+  4. 为实体/关系文本生成 embedding，写入 Milvus graphrag_{文件名}_{file_id} 集合（与会话 RAG 共用同一 Database）
 
 检索（用户提问）:
   1. 问题 embedding → Milvus 向量检索（实体 + 关系）
@@ -30,13 +30,21 @@ from pymilvus import MilvusClient
 import neo4j_store
 from api_throttle import call_with_retry
 from llm_zhipu import make_chat_llm
+from milvus_naming import (
+    GRAPHRAG_COLLECTION_PREFIX,
+    LEGACY_GRAPHRAG_COLLECTION_PREFIX,
+    graphrag_collection_name,
+    is_graphrag_collection,
+    is_legacy_graphrag_collection,
+    norm_session_id,
+    resolve_graphrag_collection,
+    session_database_name,
+)
 from rag_milvus import embed_texts, split_text
 
 logger = logging.getLogger("graphrag")
 
 MILVUS_URI = os.getenv("MILVUS_URI", "http://127.0.0.1:19530")
-MILVUS_DB_PREFIX = os.getenv("MILVUS_DB_PREFIX", "graphrag")
-MILVUS_GRAPH_PREFIX = os.getenv("MILVUS_GRAPH_PREFIX", "graph")
 EMBEDDING_DIM = int(os.getenv("RAG_EMBEDDING_DIM", "1024"))
 GRAPHRAG_TOP_K = int(os.getenv("GRAPHRAG_TOP_K", "8"))
 GRAPHRAG_GRAPH_HOPS = int(os.getenv("GRAPHRAG_GRAPH_HOPS", "2"))
@@ -49,7 +57,6 @@ EXTRACT_BATCH_SIZE = int(os.getenv("GRAPHRAG_EXTRACT_BATCH_SIZE", "3"))
 EXTRACT_BATCH_DELAY_SEC = float(os.getenv("GRAPHRAG_EXTRACT_BATCH_DELAY_SEC", "0"))
 
 _milvus_root: MilvusClient | None = None
-_slug_re = re.compile(r"[^0-9a-zA-Z_]+")
 
 EXTRACT_SYSTEM = """你是知识图谱抽取助手。从给定文本片段中抽取实体与关系，严格输出 JSON，不要 markdown 代码块：
 {
@@ -67,25 +74,9 @@ def graphrag_enabled() -> bool:
     return GRAPHRAG_ENABLED
 
 
-def _slug(value: str, *, max_len: int = 56, prefix_if_digit: str = "d") -> str:
-    s = _slug_re.sub("_", (value or "x").strip())[:max_len].strip("_") or "x"
-    if s[0].isdigit():
-        s = f"{prefix_if_digit}_{s}"
-    return s
-
-
-def _norm_session_id(session_id: str) -> str:
-    return (session_id or "default").strip() or "default"
-
-
-def session_database_name(session_id: str) -> str:
-    sid = _slug(_norm_session_id(session_id), max_len=48, prefix_if_digit="s")
-    return f"{MILVUS_DB_PREFIX}_{sid}"
-
-
-def graph_collection_name(file_id: str) -> str:
-    fid = _slug((file_id or "").strip(), max_len=56, prefix_if_digit="f")
-    return f"{MILVUS_GRAPH_PREFIX}_{fid}"
+def graph_collection_name(file_id: str, source_name: str = "") -> str:
+    """GraphRAG 集合名（兼容旧调用方）。"""
+    return graphrag_collection_name(source_name or file_id, file_id)
 
 
 def _root_client() -> MilvusClient:
@@ -122,8 +113,12 @@ def list_graph_collections(session_id: str) -> list[str]:
     db_name = session_database_name(session_id)
     _ensure_session_database(db_name)
     client = _client_for_database(db_name)
-    prefix = f"{MILVUS_GRAPH_PREFIX}_"
-    return sorted(c for c in client.list_collections() if c.startswith(prefix))
+    legacy_prefix = f"{LEGACY_GRAPHRAG_COLLECTION_PREFIX}_"
+    return sorted(
+        c
+        for c in client.list_collections()
+        if is_graphrag_collection(c) or c.startswith(legacy_prefix)
+    )
 
 
 def _parse_extract_json(raw: str) -> dict[str, list]:
@@ -230,10 +225,10 @@ def _index_vectors_to_milvus(
     entities: list[dict],
     relations: list[dict],
 ) -> int:
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     fid = (file_id or "").strip()
     db_name = session_database_name(sid)
-    coll_name = graph_collection_name(fid)
+    coll_name = graphrag_collection_name(source_name, fid)
     client = _client_for_database(db_name)
     _ensure_graph_collection(client, coll_name)
 
@@ -281,10 +276,14 @@ def _index_vectors_to_milvus(
     return len(rows)
 
 
-def delete_file_graph(session_id: str, file_id: str) -> None:
+def delete_file_graph(
+    session_id: str,
+    file_id: str,
+    source_name: str | None = None,
+) -> None:
     if not graphrag_enabled():
         return
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     fid = (file_id or "").strip()
     if not fid:
         return
@@ -293,25 +292,37 @@ def delete_file_graph(session_id: str, file_id: str) -> None:
     except Exception:
         pass
     db_name = session_database_name(sid)
-    coll_name = graph_collection_name(fid)
+    coll_name = resolve_graphrag_collection(sid, fid, source_name)
     _ensure_session_database(db_name)
     client = _client_for_database(db_name)
     if client.has_collection(coll_name):
         client.drop_collection(coll_name)
+    legacy = f"{LEGACY_GRAPHRAG_COLLECTION_PREFIX}_{fid}"
+    if client.has_collection(legacy):
+        client.drop_collection(legacy)
 
 
 def delete_session_graph(session_id: str) -> None:
+    """删除会话下所有 GraphRAG 集合（不删除 rag_* 集合）。"""
     if not graphrag_enabled():
         return
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     try:
         neo4j_store.delete_session_graph(sid)
     except Exception:
         pass
     db_name = session_database_name(sid)
     root = _root_client()
-    if db_name in set(root.list_databases()):
-        root.drop_database(db_name)
+    if db_name not in set(root.list_databases()):
+        return
+    client = _client_for_database(db_name)
+    legacy_prefix = f"{LEGACY_GRAPHRAG_COLLECTION_PREFIX}_"
+    for coll in list(client.list_collections()):
+        if is_graphrag_collection(coll) or coll.startswith(legacy_prefix):
+            client.drop_collection(coll)
+    from rag_milvus import _maybe_drop_empty_session_database
+
+    _maybe_drop_empty_session_database(session_id)
 
 
 def index_document(
@@ -324,21 +335,22 @@ def index_document(
     if not graphrag_enabled():
         return {"enabled": False, "entities": 0, "relations": 0}
 
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     fid = (file_id or "").strip()
     if not fid:
         return {"enabled": True, "entities": 0, "relations": 0, "error": "缺少 file_id"}
 
     chunks = split_text(text)
+    coll_name = graphrag_collection_name(source_name, fid)
     if not chunks:
-        delete_file_graph(sid, fid)
+        delete_file_graph(sid, fid, source_name)
         return {
             "enabled": True,
             "entities": 0,
             "relations": 0,
             "chunks": 0,
             "database": session_database_name(sid),
-            "collection": graph_collection_name(fid),
+            "collection": coll_name,
             "mode": "graphrag",
         }
 
@@ -386,12 +398,11 @@ def index_document(
             "vectors": 0,
             "error": f"Milvus 写入失败: {e}",
             "database": session_database_name(sid),
-            "collection": graph_collection_name(fid),
+            "collection": coll_name,
             "mode": "graphrag",
         }
 
     db_name = session_database_name(sid)
-    coll_name = graph_collection_name(fid)
     neo4j_db = graph_stats.get("neo4j_database") or neo4j_store.NEO4J_DEFAULT_DB
     storage_mode = graph_stats.get("storage_mode") or "community_replace"
     return {
@@ -419,13 +430,17 @@ def _search_milvus_graph(
     limit: int,
     file_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     db_name = session_database_name(sid)
     _ensure_session_database(db_name)
     client = _client_for_database(db_name)
 
     if file_ids:
-        targets = [graph_collection_name(fid) for fid in file_ids if str(fid).strip()]
+        targets = [
+            resolve_graphrag_collection(sid, str(fid).strip())
+            for fid in file_ids
+            if str(fid).strip()
+        ]
     else:
         targets = list_graph_collections(sid)
 
@@ -485,7 +500,7 @@ def hybrid_search(
     if not q:
         return {"vector_hits": [], "graph_triples": [], "seed_entities": []}
 
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     limit = top_k or GRAPHRAG_TOP_K
     query_vec = embed_texts([q])[0]
     vector_hits = _search_milvus_graph(sid, query_vec, limit, file_ids=file_ids)
@@ -574,7 +589,7 @@ def build_graphrag_context(
 
 
 def list_session_graph_index(session_id: str) -> list[dict[str, Any]]:
-    sid = _norm_session_id(session_id)
+    sid = norm_session_id(session_id)
     out: list[dict[str, Any]] = []
     db_name = session_database_name(sid)
 
@@ -601,7 +616,12 @@ def list_session_graph_index(session_id: str) -> list[dict[str, Any]]:
 
     client = _client_for_database(db_name)
     for coll in list_graph_collections(sid):
-        fid = coll[len(f"{MILVUS_GRAPH_PREFIX}_") :]
+        if is_legacy_graphrag_collection(coll):
+            fid = coll[len(f"{LEGACY_GRAPHRAG_COLLECTION_PREFIX}_") :]
+        elif is_graphrag_collection(coll):
+            fid = coll.split("_")[-1]
+        else:
+            fid = coll
         mod = neo_modules.get(fid, {})
         try:
             n = client.query(

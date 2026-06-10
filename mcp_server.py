@@ -47,9 +47,22 @@ def hello(name: str = "user") -> str:
     return f"Hello {name}, 这是你的 MCP 服务！"
 
 
-@mcp.tool
+def _local_time_string() -> str:
+    now = datetime.now().astimezone()
+    tz = now.tzname() or "local"
+    return now.strftime("%Y-%m-%d %H:%M:%S %A") + f"（本地时间，{tz}）"
+
+
+@mcp.tool(
+    name="get_current_time",
+    description=(
+        "获取本机当前日期、时间与星期（本地时区），无需联网。"
+        "用户问现在几点、今天几号、星期几、当前日期时间时必须优先调用此工具，"
+        "禁止为查时间而调用 web_search。"
+    ),
+)
 def get_current_time() -> str:
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S %A")
+    return _local_time_string()
 
 
 @mcp.tool
@@ -85,12 +98,20 @@ def _safe_excel_filename(name: str | None) -> str:
 
 @mcp.tool(
     name="web_search",
-    description="联网搜索实时信息（Tavily）。需环境变量 TAVILY_API_KEY；适合新闻、股价、政策等时效问题。",
+    description=(
+        "联网搜索实时信息（Tavily）。需环境变量 TAVILY_API_KEY；"
+        "适合新闻、股价、政策、天气等时效问题。"
+        "查询会自动以本机当前时间为基准；若只需知道现在几点/今天日期，请用 get_current_time，不要用本工具。"
+    ),
 )
 def web_search(query: str, max_results: int = 5) -> str:
     api_key = os.getenv("TAVILY_API_KEY", "")
     if not api_key:
         return "❌ 未配置 TAVILY_API_KEY：请在 .env 文件或环境中设置该变量后再试。"
+
+    time_ctx = _local_time_string()
+    q = (query or "").strip()
+    enriched_query = f"[当前本地时间：{time_ctx}] {q}" if q else f"[当前本地时间：{time_ctx}]"
 
     max_results = max(1, min(int(max_results or 5), 10))
     try:
@@ -98,7 +119,7 @@ def web_search(query: str, max_results: int = 5) -> str:
             "https://api.tavily.com/search",
             json={
                 "api_key": api_key,
-                "query": query,
+                "query": enriched_query,
                 "search_depth": "basic",
                 "max_results": max_results,
                 "include_answer": True,
@@ -110,7 +131,7 @@ def web_search(query: str, max_results: int = 5) -> str:
     except requests.RequestException as e:
         return f"❌ 搜索请求失败：{e}"
 
-    lines: list[str] = []
+    lines: list[str] = [f"检索基准时间（本机）：{time_ctx}"]
     ans = data.get("answer")
     if ans:
         lines.append(f"摘要：{ans}")

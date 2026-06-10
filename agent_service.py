@@ -7,7 +7,7 @@ from mcp.client.streamable_http import streamable_http_client
 
 from agent_checkpointer import get_checkpointer, reset_agent_thread
 from app_config import HITL_ENABLED, LOG_LLM_PROMPT_MAX, MCP_URL, logger
-from chat_helpers import last_assistant_text
+from chat_helpers import last_assistant_text, messages_have_pending_tool_calls
 from hitl_tools import normalize_interrupts, wrap_tools_with_hitl
 from llm_zhipu import make_chat_llm
 import mcp_lifecycle
@@ -21,7 +21,8 @@ CHAT_AGENT_PROMPT = (
     "需要查看某好友最近聊天记录时用 get_wechat_messages(to_name, count)；发文件到微信用 send_wechat_files(to_name, file_paths)（file_paths 须为 MCP 服务端本机存在的绝对路径，执行前需用户确认）。\n"
     "读取本机文件夹/文件：先用 list_local_directory 或 glob_local_files 列出真实绝对路径，再用 read_local_file 读内容；不要把猜测的路径直接传给 send_wechat_files。\n"
     "用户要把某目录下全部文件发微信时：glob_local_files(directory, pattern='*', recursive=True) → 取 files[].path → send_wechat_files。\n"
-    "涉及时效、新闻、股价、黄金/汇率/商品价格、天气、政策等需要联网核实时，必须先调用 web_search 工具（需服务端已配置 TAVILY_API_KEY），再基于搜索结果回答。\n"
+    "询问当前日期、时间、星期几、今天几号等，必须调用 get_current_time（本机时间，无需联网），禁止为此调用 web_search。\n"
+    "涉及时效、新闻、股价、黄金/汇率/商品价格、天气、政策等需要联网核实时，必须先调用 web_search（系统会以本机时间为检索基准；也可先 get_current_time 再搜索），再基于搜索结果回答。\n"
     "如果 web_search 工具可用，不要回答“没有实时查询能力”或让用户自行去网站查询。\n"
     "用户要表格展示时用 format_pretty_table；明确要求导出 / 保存为 Excel 时用 export_to_excel，并传入表头 headers 与二维 rows（表格/Excel 执行前需用户确认）。\n"
     "纯聊天可直接回答。"
@@ -142,8 +143,17 @@ async def _invoke_agent(
         state = await agent.ainvoke({"messages": lc_messages or []}, config=config)
     hitl = normalize_interrupts(state.get("__interrupt__"))
     msgs = state.get("messages") or []
+    pending = messages_have_pending_tool_calls(msgs)
+    if hitl and not pending:
+        hitl = []
+    elif not hitl and pending:
+        from agent_state import synthetic_hitl_from_messages
+
+        hitl = synthetic_hitl_from_messages(msgs) or None
     if hitl:
         return None, msgs, hitl
+    if pending:
+        return None, msgs, None
     return last_assistant_text(msgs), msgs, None
 
 

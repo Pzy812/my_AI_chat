@@ -65,7 +65,27 @@ def upload_meta_for_message(file_ids: list[str], session_id: str) -> list[dict]:
     return items
 
 
+def messages_have_pending_tool_calls(messages: list) -> bool:
+    """AIMessage 已发出 tool_calls 但尚未有对应 ToolMessage。"""
+    pending_ids: set[str] = set()
+    answered_ids: set[str] = set()
+    for m in messages:
+        if isinstance(m, AIMessage):
+            for tc in m.tool_calls or []:
+                tid = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                if tid:
+                    pending_ids.add(str(tid))
+        elif isinstance(m, ToolMessage):
+            tid = getattr(m, "tool_call_id", None)
+            if tid:
+                answered_ids.add(str(tid))
+    return bool(pending_ids - answered_ids)
+
+
 def last_assistant_text(messages: list) -> str:
+    """取最后一条有效助手文本；若末尾存在未完成的 tool_calls 则返回空串。"""
+    if messages_have_pending_tool_calls(messages):
+        return ""
     for m in reversed(messages):
         if isinstance(m, AIMessage) and getattr(m, "content", None):
             c = m.content

@@ -22,3 +22,16 @@ HITL_TOOL_LABELS: dict[str, str] = {
 
 def hitl_tool_label(name: str) -> str:
     return HITL_TOOL_LABELS.get(name, name)
+
+
+def hitl_payload_for_tool(name: str, args: dict) -> dict:
+    """构造前端 HITL 卡片 payload。"""
+    from hitl_tools import _args_summary
+
+    return {
+        "type": "tool_approval",
+        "tool": name,
+        "label": hitl_tool_label(name),
+        "args": args or {},
+        "summary": _args_summary(name, args or {}),
+    }

@@ -158,6 +158,70 @@
             cursor: pointer;
         }
         .hitl-btn-reject:hover { background: rgba(71,85,105,0.95); }
+        .reasoning-panel {
+            margin-top: 0.65rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .reasoning-panel.is-collapsed {
+            display: none;
+        }
+        .reasoning-fold {
+            margin-bottom: 0.65rem;
+        }
+        .reasoning-fold-toggle {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            text-align: left;
+            border-radius: 10px;
+            padding: 0.45rem 0.65rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #c4b5fd;
+            background: rgba(139,92,246,0.12);
+            border: 1px solid rgba(167,139,250,0.28);
+            cursor: pointer;
+            transition: background 0.15s ease, border-color 0.15s ease;
+        }
+        .reasoning-fold-toggle:hover {
+            background: rgba(139,92,246,0.2);
+            border-color: rgba(167,139,250,0.4);
+        }
+        .assistant-reply {
+            margin-top: 0.15rem;
+        }
+        .reason-step {
+            border-radius: 12px;
+            padding: 0.55rem 0.75rem;
+            font-size: 0.8125rem;
+            line-height: 1.55;
+            border: 1px solid rgba(148,163,184,0.12);
+            background: rgba(15,23,42,0.55);
+        }
+        .reason-step .reason-phase {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+        .reason-step.thought { border-color: rgba(56,189,248,0.28); }
+        .reason-step.thought .reason-phase { color: #7dd3fc; }
+        .reason-step.action { border-color: rgba(251,191,36,0.28); }
+        .reason-step.action .reason-phase { color: #fcd34d; }
+        .reason-step.observation { border-color: rgba(52,211,153,0.28); }
+        .reason-step.observation .reason-phase { color: #6ee7b7; }
+        .reason-step.status { border-color: rgba(148,163,184,0.2); }
+        .reason-step.status .reason-phase { color: #94a3b8; }
+        .reason-step-body {
+            color: #cbd5e1;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 220px;
+            overflow-y: auto;
+        }
         .bubble-label {
             font-size: 0.72rem;
             font-weight: 600;
@@ -211,6 +275,14 @@
             opacity: 0.55;
             cursor: not-allowed;
             box-shadow: none;
+        }
+        .btn-stop {
+            background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%);
+            box-shadow: 0 4px 14px rgba(220,38,38,0.35);
+            color: #fff;
+        }
+        .btn-stop:hover:not(:disabled) {
+            filter: brightness(1.06);
         }
         .btn-ghost {
             border: 1px solid rgba(148,163,184,0.2);
@@ -405,6 +477,14 @@
                         </div>
                     </div>
                     <label class="flex items-start gap-2.5 text-xs sm:text-sm text-slate-400 cursor-pointer select-none max-w-3xl">
+                        <input type="checkbox" id="cbShowReasoning" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-violet-500 focus:ring-violet-500/40" checked>
+                        <span>展示 Agent 推理过程（<strong class="text-slate-300 font-normal">Thought → Action → Observation</strong>，每条回复可收起/展开；关闭则仅显示最终回答）</span>
+                    </label>
+                    <label class="flex items-start gap-2.5 text-xs sm:text-sm text-slate-400 cursor-pointer select-none max-w-3xl">
+                        <input type="checkbox" id="cbReasoningExpanded" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-violet-500 focus:ring-violet-500/40">
+                        <span>推理过程默认展开（不勾选则默认收起，点击「Agent 推理过程 · N 步」可展开）</span>
+                    </label>
+                    <label class="flex items-start gap-2.5 text-xs sm:text-sm text-slate-400 cursor-pointer select-none max-w-3xl">
                         <input type="checkbox" id="cbToolDebug" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500/40">
                         <span>显示本轮 MCP 工具调用详情（是否调用 <code class="text-slate-500">send_wechat_message</code> / <code class="text-slate-500">send_email</code> 及原始返回，便于判断是模型选错工具还是底层失败）</span>
                     </label>
@@ -461,12 +541,15 @@
                             <button type="button" id="chatSendBtn" onclick="sendChatMessage()" class="btn-send rounded-xl px-8 py-3.5 text-sm sm:text-base font-semibold text-white min-w-[120px]">
                                 <i class="fa-solid fa-paper-plane mr-2"></i>发送
                             </button>
+                            <button type="button" id="chatStopBtn" onclick="stopChatExecution()" class="btn-stop hidden rounded-xl px-6 py-3.5 text-sm sm:text-base font-semibold min-w-[120px]" title="立即停止 AI 推理与工具执行">
+                                <i class="fa-solid fa-stop mr-2"></i>停止
+                            </button>
                         </div>
                     </div>
                     <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 px-1 text-[11px] sm:text-xs text-slate-500">
                         <span><span class="kbd-hint">Enter</span> 发送</span>
                         <span><span class="kbd-hint">Shift</span> + <span class="kbd-hint">Enter</span> 换行</span>
-                        <span>等待 AI 回复时不可连续发送，避免重复请求</span>
+                        <span>等待 AI 回复时不可连续发送；可点「停止」立即打断</span>
                     </div>
                 </div>
                 <p id="chatStatus" class="text-xs sm:text-sm text-slate-500 mt-4 px-1 flex items-center gap-2">
@@ -480,13 +563,194 @@
         let chatAwaitingReply = false;
         let pendingUploads = [];
         let hitlContext = null;
+        let chatAbortController = null;
+        let chatStopRequested = false;
+        let currentReasoningSteps = [];
         const RAG_MODE_STORAGE_KEY = 'aiChatRagMode';
+        const REASONING_STORAGE_KEY = 'aiChatShowReasoning';
+        const REASONING_EXPANDED_KEY = 'aiChatReasoningExpanded';
+        const REASONING_TRACE_KEY = 'aiChatReasoningTraces';
 
         window.onload = function () {
             initRagModeSelector();
+            initReasoningCheckbox();
+            initReasoningExpandedCheckbox();
             loadChatHistory();
             loadSessions();
         };
+
+        function initReasoningExpandedCheckbox() {
+            const cb = document.getElementById('cbReasoningExpanded');
+            if (!cb) return;
+            cb.checked = localStorage.getItem(REASONING_EXPANDED_KEY) === '1';
+            cb.addEventListener('change', function () {
+                localStorage.setItem(REASONING_EXPANDED_KEY, cb.checked ? '1' : '0');
+            });
+        }
+
+        function isReasoningExpandedByDefault() {
+            const cb = document.getElementById('cbReasoningExpanded');
+            return cb ? cb.checked : false;
+        }
+
+        function resetReasoningSteps() {
+            currentReasoningSteps = [];
+        }
+
+        function recordReasoningStep(ev) {
+            if (!ev || (ev.type !== 'step' && ev.type !== 'step_delta')) return;
+            if (ev.type === 'step_delta' && ev.phase === 'thought') {
+                const last = currentReasoningSteps[currentReasoningSteps.length - 1];
+                if (last && last.phase === 'thought' && last._streaming) {
+                    last.content = (last.content || '') + (ev.content || '');
+                    return;
+                }
+                currentReasoningSteps.push({
+                    type: 'step',
+                    phase: 'thought',
+                    content: ev.content || '',
+                    _streaming: true
+                });
+                return;
+            }
+            if (ev.type === 'step') {
+                if (ev.phase === 'thought') {
+                    const last = currentReasoningSteps[currentReasoningSteps.length - 1];
+                    if (last && last.phase === 'thought' && last._streaming) {
+                        if (!(last.content || '').trim() && ev.content) last.content = ev.content;
+                        delete last._streaming;
+                        return;
+                    }
+                }
+                currentReasoningSteps.push({
+                    type: 'step',
+                    phase: ev.phase || 'status',
+                    content: ev.content || '',
+                    tool: ev.tool || '',
+                    args: ev.args || null
+                });
+            }
+        }
+
+        function getReasoningTraces(sessionId) {
+            try {
+                const all = JSON.parse(sessionStorage.getItem(REASONING_TRACE_KEY) || '{}');
+                return all[sessionId] || {};
+            } catch (e) {
+                return {};
+            }
+        }
+
+        function saveReasoningTrace(sessionId, contentKey, steps) {
+            if (!steps || !steps.length) return;
+            try {
+                const all = JSON.parse(sessionStorage.getItem(REASONING_TRACE_KEY) || '{}');
+                if (!all[sessionId]) all[sessionId] = {};
+                all[sessionId][contentKey] = steps.map(function (s) {
+                    return {
+                        phase: s.phase,
+                        content: s.content,
+                        tool: s.tool,
+                        args: s.args
+                    };
+                });
+                sessionStorage.setItem(REASONING_TRACE_KEY, JSON.stringify(all));
+            } catch (e) { /* ignore quota */ }
+        }
+
+        function reasoningTraceKey(content) {
+            return String(content || '').slice(0, 160);
+        }
+
+        function buildReasonStepHtml(step) {
+            const phase = step.phase || 'status';
+            let bodyText = step.content || '';
+            if (phase === 'action' && step.tool && !bodyText) {
+                bodyText = '调用工具：' + step.tool;
+            }
+            return (
+                '<div class="reason-step ' + phase + '">' +
+                '<div class="reason-phase">' + reasonPhaseLabel(phase) + '</div>' +
+                '<div class="reason-step-body">' + escapeHtml(bodyText) + '</div></div>'
+            );
+        }
+
+        function buildReasoningFoldHtml(steps, expanded) {
+            if (!steps || !steps.length) return '';
+            const stepsHtml = steps.map(buildReasonStepHtml).join('');
+            return (
+                '<div class="reasoning-fold">' +
+                '<button type="button" class="reasoning-fold-toggle" aria-expanded="' + (expanded ? 'true' : 'false') + '">' +
+                '<i class="fa-solid fa-chevron-' + (expanded ? 'up' : 'down') + ' mr-2"></i>' +
+                'Agent 推理过程 · ' + steps.length + ' 步</button>' +
+                '<div class="reasoning-panel' + (expanded ? '' : ' is-collapsed') + '">' +
+                stepsHtml + '</div></div>'
+            );
+        }
+
+        function wireReasoningFolds(root) {
+            if (!root) return;
+            root.querySelectorAll('.reasoning-fold-toggle').forEach(function (btn) {
+                if (btn.dataset.wired === '1') return;
+                btn.dataset.wired = '1';
+                btn.addEventListener('click', function () {
+                    const panel = btn.nextElementSibling;
+                    if (!panel) return;
+                    const collapsed = panel.classList.toggle('is-collapsed');
+                    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                    const icon = btn.querySelector('i');
+                    if (icon) {
+                        icon.className = 'fa-solid fa-chevron-' + (collapsed ? 'down' : 'up') + ' mr-2';
+                    }
+                });
+            });
+        }
+
+        function wrapReasoningPanelCollapsible(panel, stepCount) {
+            if (!panel || panel.closest('.reasoning-fold')) return panel;
+            const fold = document.createElement('div');
+            fold.className = 'reasoning-fold';
+            const expanded = isReasoningExpandedByDefault();
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'reasoning-fold-toggle';
+            btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            btn.innerHTML =
+                '<i class="fa-solid fa-chevron-' + (expanded ? 'up' : 'down') + ' mr-2"></i>' +
+                'Agent 推理过程 · ' + (stepCount || panel.querySelectorAll('.reason-step').length) + ' 步';
+            panel.parentNode.insertBefore(fold, panel);
+            fold.appendChild(btn);
+            fold.appendChild(panel);
+            if (!expanded) panel.classList.add('is-collapsed');
+            wireReasoningFolds(fold);
+            return panel;
+        }
+
+        function onReasoningStreamEvent(panel, ev) {
+            recordReasoningStep(ev);
+            if (panel && wantReasoningStream()) {
+                appendOrUpdateReasonStep(panel, ev);
+            }
+            if (ev && (ev.type === 'step' || ev.type === 'step_delta')) {
+                const n = currentReasoningSteps.length;
+                setChatStatusLine('Agent 运行中 · 已 ' + n + ' 步…');
+            }
+        }
+
+        function initReasoningCheckbox() {
+            const cb = document.getElementById('cbShowReasoning');
+            if (!cb) return;
+            const saved = localStorage.getItem(REASONING_STORAGE_KEY);
+            if (saved === '0') cb.checked = false;
+            cb.addEventListener('change', function () {
+                localStorage.setItem(REASONING_STORAGE_KEY, cb.checked ? '1' : '0');
+            });
+        }
+
+        function wantReasoningStream() {
+            const cb = document.getElementById('cbShowReasoning');
+            return cb ? cb.checked : true;
+        }
 
         function getRagMode() {
             const checked = document.querySelector('input[name="ragMode"]:checked');
@@ -515,22 +779,258 @@
             return window.location.origin;
         }
 
-        async function api(url, data = {}) {
+        async function api(url, data = {}, signal) {
             try {
-                const res = await fetch(apiBase() + url, {
+                const opts = {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
-                });
+                };
+                if (signal) opts.signal = signal;
+                const res = await fetch(apiBase() + url, opts);
                 return await res.json();
             } catch (err) {
+                if (err && err.name === 'AbortError') {
+                    return { code: 0, type: 'cancelled', status: 'cancelled', msg: '执行已由用户中断' };
+                }
                 return { code: -1, msg: '网络错误: ' + (err && err.message ? err.message : String(err)) };
             }
+        }
+
+        async function consumeSseStream(url, body, onEvent, signal) {
+            const fetchOpts = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'text/event-stream'
+                },
+                body: JSON.stringify(body)
+            };
+            if (signal) fetchOpts.signal = signal;
+            const res = await fetch(apiBase() + url, fetchOpts);
+            if (!res.ok) {
+                let errMsg = 'HTTP ' + res.status;
+                try {
+                    const j = await res.json();
+                    if (j && j.msg) errMsg = j.msg;
+                } catch (e) { /* ignore */ }
+                throw new Error(errMsg);
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let lastEvent = null;
+
+            function processSseBlock(block) {
+                const trimmed = (block || '').trim();
+                if (!trimmed || trimmed.charAt(0) === ':') return;
+                const line = trimmed.split('\n').find(function (l) { return l.indexOf('data: ') === 0; });
+                if (!line) return;
+                try {
+                    const payload = JSON.parse(line.slice(6));
+                    if (payload.type === 'stream_end') return;
+                    lastEvent = payload;
+                    if (onEvent) onEvent(payload);
+                } catch (parseErr) {
+                    console.warn('SSE JSON 解析失败', parseErr, line);
+                }
+            }
+
+            while (true) {
+                if (signal && signal.aborted) {
+                    throw new DOMException('Aborted', 'AbortError');
+                }
+                const chunk = await reader.read();
+                if (chunk.done) {
+                    buffer += decoder.decode();
+                    if (buffer.trim()) processSseBlock(buffer);
+                    break;
+                }
+                buffer += decoder.decode(chunk.value, { stream: true });
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop() || '';
+                for (let pi = 0; pi < parts.length; pi++) {
+                    processSseBlock(parts[pi]);
+                }
+            }
+            return lastEvent;
+        }
+
+        function normalizeChatResponse(res) {
+            if (!res) return { code: -1, msg: '无响应' };
+            if (res.type === 'done' || res.type === 'hitl_pending' || res.type === 'error' || res.type === 'cancelled') return res;
+            if (res.code === 0) return res;
+            return res;
+        }
+
+        function isChatCancelled(res) {
+            return res && (res.type === 'cancelled' || res.status === 'cancelled');
+        }
+
+        function isHitlPending(res) {
+            return res && res.code === 0 && res.status === 'hitl_pending';
+        }
+
+        function isChatSuccess(res) {
+            return res && res.code === 0 && res.status !== 'hitl_pending' && res.type !== 'error';
+        }
+
+        function appendAssistantFromResponse(res) {
+            finalizePendingAsAssistant(null, res, currentReasoningSteps.slice());
+        }
+
+        function reasonPhaseLabel(phase) {
+            if (phase === 'thought') return 'Thought · 推理';
+            if (phase === 'action') return 'Action · 行动';
+            if (phase === 'observation') return 'Observation · 观察';
+            return 'Status · 状态';
         }
 
         function getSessionId() {
             const v = document.getElementById('chatSessionId').value.trim();
             return v || 'default';
+        }
+
+        function ensureReasoningPanel(bubble) {
+            let panel = bubble.querySelector('.reasoning-panel');
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.className = 'reasoning-panel';
+                bubble.appendChild(panel);
+            }
+            return panel;
+        }
+
+        function appendOrUpdateReasonStep(panel, ev) {
+            const phase = ev.phase || 'status';
+            const isDelta = ev.type === 'step_delta' && phase === 'thought';
+            if (isDelta) {
+                let last = panel.querySelector('.reason-step.thought:last-child');
+                if (!last) {
+                    last = document.createElement('div');
+                    last.className = 'reason-step thought';
+                    last.innerHTML = '<div class="reason-phase">' + reasonPhaseLabel('thought') + '</div><div class="reason-step-body"></div>';
+                    panel.appendChild(last);
+                }
+                const body = last.querySelector('.reason-step-body');
+                if (body) body.textContent += (ev.content || '');
+                refreshReasoningFoldLabel(panel);
+                return;
+            }
+            if (phase === 'thought') {
+                const lastThought = panel.querySelector('.reason-step.thought:last-child');
+                if (lastThought) {
+                    const body = lastThought.querySelector('.reason-step-body');
+                    if (body && (body.textContent || '').trim()) {
+                        refreshReasoningFoldLabel(panel);
+                        return;
+                    }
+                }
+            }
+            const step = document.createElement('div');
+            step.className = 'reason-step ' + phase;
+            let bodyText = ev.content || '';
+            if (phase === 'action' && ev.tool && !bodyText) {
+                bodyText = '调用工具：' + ev.tool;
+            }
+            step.innerHTML = '<div class="reason-phase">' + reasonPhaseLabel(phase) + '</div>' +
+                '<div class="reason-step-body">' + escapeHtml(bodyText) + '</div>';
+            panel.appendChild(step);
+            refreshReasoningFoldLabel(panel);
+        }
+
+        function refreshReasoningFoldLabel(panel) {
+            if (!panel) return;
+            const fold = panel.closest('.reasoning-fold');
+            if (!fold) return;
+            const btn = fold.querySelector('.reasoning-fold-toggle');
+            if (!btn) return;
+            const n = panel.querySelectorAll('.reason-step').length;
+            const expanded = btn.getAttribute('aria-expanded') === 'true';
+            btn.innerHTML =
+                '<i class="fa-solid fa-chevron-' + (expanded ? 'up' : 'down') + ' mr-2"></i>' +
+                'Agent 推理过程 · ' + n + ' 步';
+        }
+
+        function mountReasoningOnPending(pendingRow) {
+            const bubble = pendingRow.querySelector('.bubble.pending-reply') || pendingRow.querySelector('.bubble');
+            if (!bubble) return null;
+            const labelEl = bubble.querySelector('.bubble-label');
+            if (labelEl) labelEl.textContent = '推理中';
+            let spinWrap = bubble.querySelector('.pending-spin-wrap');
+            if (!spinWrap) {
+                spinWrap = document.createElement('div');
+                spinWrap.className = 'pending-spin-wrap text-sky-300 text-sm py-1';
+                spinWrap.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Agent 运行中…';
+                const firstBlock = bubble.querySelector('.bubble-label');
+                if (firstBlock && firstBlock.nextSibling) {
+                    bubble.insertBefore(spinWrap, firstBlock.nextSibling);
+                } else {
+                    bubble.appendChild(spinWrap);
+                }
+            }
+            const panel = ensureReasoningPanel(bubble);
+            if (!panel.closest('.reasoning-fold')) {
+                wrapReasoningPanelCollapsible(panel, 0);
+            }
+            return panel;
+        }
+
+        function finalizePendingAsAssistant(pendingRow, res, steps) {
+            const msg = (res && res.msg) || '';
+            if (!pendingRow) {
+                appendAssistantWithReasoning(msg, steps, res && res.mcp_attachments);
+                return;
+            }
+            pendingRow.removeAttribute('id');
+            const bubble = pendingRow.querySelector('.bubble');
+            if (!bubble) return;
+            bubble.classList.remove('pending-reply');
+            const spin = bubble.querySelector('.pending-spin-wrap');
+            if (spin) spin.remove();
+            const hitlBody = bubble.querySelector('.hitl-body');
+            if (hitlBody) hitlBody.remove();
+
+            let foldHtml = '';
+            const useSteps = (steps && steps.length) ? steps : [];
+            if (useSteps.length && wantReasoningStream()) {
+                foldHtml = buildReasoningFoldHtml(useSteps, isReasoningExpandedByDefault());
+                saveReasoningTrace(getSessionId(), reasoningTraceKey(msg), useSteps);
+            }
+
+            bubble.innerHTML =
+                '<div class="bubble-label">助手</div>' +
+                foldHtml +
+                '<div class="assistant-reply whitespace-pre-wrap">' + escapeHtml(msg) + '</div>';
+            wireReasoningFolds(bubble);
+
+            if (res && res.mcp_attachments && res.mcp_attachments.length) {
+                const log = document.getElementById('chatLog');
+                if (log) log.appendChild(buildMcpAttachmentsRow(res.mcp_attachments));
+            }
+        }
+
+        function appendAssistantWithReasoning(msg, steps, attachments) {
+            const log = document.getElementById('chatLog');
+            const hint = log && log.querySelector('.empty-chat-hint');
+            if (hint) hint.remove();
+            let body = '';
+            const useSteps = (steps && steps.length) ? steps : [];
+            if (useSteps.length && wantReasoningStream()) {
+                body += buildReasoningFoldHtml(useSteps, isReasoningExpandedByDefault());
+                saveReasoningTrace(getSessionId(), reasoningTraceKey(msg), useSteps);
+            }
+            body += '<div class="assistant-reply whitespace-pre-wrap">' + escapeHtml(msg || '') + '</div>';
+            const wrap = document.createElement('div');
+            wrap.innerHTML = bubbleHtml('assistant', body);
+            if (log) {
+                log.appendChild(wrap.firstElementChild);
+                wireReasoningFolds(log);
+                if (attachments && attachments.length) {
+                    log.appendChild(buildMcpAttachmentsRow(attachments));
+                }
+                log.scrollTop = log.scrollHeight;
+            }
         }
 
         function escapeHtml(s) {
@@ -695,17 +1195,29 @@
                 log.innerHTML = '<p class="empty-chat-hint text-slate-500 text-center py-14 text-sm">暂无消息。开始对话后，内容会写入 Redis。</p>';
                 return;
             }
+            const traces = getReasoningTraces(getSessionId());
             log.innerHTML = '';
             messages.forEach(function (m) {
                 const role = m.role === 'assistant' ? 'assistant' : 'user';
                 const wrap = document.createElement('div');
-                const inner = role === 'user' ? userMessageInnerHtml(m) : escapeHtml(m.content);
+                let inner;
+                if (role === 'user') {
+                    inner = userMessageInnerHtml(m);
+                } else {
+                    const steps = traces[reasoningTraceKey(m.content)];
+                    inner = '';
+                    if (steps && steps.length && wantReasoningStream()) {
+                        inner += buildReasoningFoldHtml(steps, isReasoningExpandedByDefault());
+                    }
+                    inner += '<div class="assistant-reply whitespace-pre-wrap">' + escapeHtml(m.content) + '</div>';
+                }
                 wrap.innerHTML = bubbleHtml(role, inner);
                 log.appendChild(wrap.firstElementChild);
                 if (role === 'assistant' && m.mcp_attachments && m.mcp_attachments.length) {
                     log.appendChild(buildMcpAttachmentsRow(m.mcp_attachments));
                 }
             });
+            wireReasoningFolds(log);
             log.scrollTop = log.scrollHeight;
         }
 
@@ -713,22 +1225,66 @@
             chatAwaitingReply = locked;
             const ta = document.getElementById('chatInput');
             const sendBtn = document.getElementById('chatSendBtn');
+            const stopBtn = document.getElementById('chatStopBtn');
             const refBtn = document.getElementById('chatRefreshBtn');
             const clrBtn = document.getElementById('chatClearBtn');
             const sidInput = document.getElementById('chatSessionId');
             const navSel = document.getElementById('sessionNavSelect');
             const cb = document.getElementById('cbToolDebug');
+            const cbReason = document.getElementById('cbShowReasoning');
             const uploadBtn = document.getElementById('chatUploadBtn');
             const fileInput = document.getElementById('fileUploadInput');
-            [ta, sendBtn, refBtn, clrBtn, sidInput, navSel, cb, uploadBtn, fileInput].forEach(el => {
+            [ta, sendBtn, refBtn, clrBtn, sidInput, navSel, cb, cbReason, uploadBtn, fileInput].forEach(el => {
                 if (!el) return;
                 el.disabled = locked;
             });
             document.querySelectorAll('#sessionAsideList button').forEach(b => { b.disabled = locked; });
             if (sendBtn) {
-                sendBtn.innerHTML = locked
-                    ? '<i class="fa-solid fa-spinner fa-spin mr-2"></i>等待中'
-                    : '<i class="fa-solid fa-paper-plane mr-2"></i>发送';
+                sendBtn.classList.toggle('hidden', locked);
+                sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>发送';
+            }
+            if (stopBtn) {
+                stopBtn.classList.toggle('hidden', !locked);
+            }
+        }
+
+        function beginChatRun() {
+            chatStopRequested = false;
+            if (chatAbortController) {
+                try { chatAbortController.abort(); } catch (e) { /* ignore */ }
+            }
+            chatAbortController = new AbortController();
+            return chatAbortController.signal;
+        }
+
+        function finalizeInterruptedRun(pendingRow, reason) {
+            const msg = reason || '（执行已由您中断，未写入完整回复）';
+            hitlContext = null;
+            chatAbortController = null;
+            chatStopRequested = false;
+            if (pendingRow) {
+                finalizePendingAsAssistant(pendingRow, { code: 0, msg: msg }, currentReasoningSteps.slice());
+            }
+            setChatUiLocked(false);
+            setChatStatusLine('已停止执行');
+            showToast('已停止 AI 执行', 'success');
+            loadChatHistory({ silent: true }).catch(function () { /* ignore */ });
+            loadSessions().catch(function () { /* ignore */ });
+        }
+
+        async function stopChatExecution() {
+            if (!chatAwaitingReply) return;
+            chatStopRequested = true;
+            setChatStatusLine('正在停止…');
+            const pendingRow = document.getElementById('chatPendingAssistant');
+            if (chatAbortController) {
+                try { chatAbortController.abort(); } catch (e) { /* ignore */ }
+            }
+            try {
+                await api('/chat/cancel', { session_id: getSessionId() });
+            } catch (e) { /* ignore */ }
+            if (chatStopRequested) {
+                finalizeInterruptedRun(pendingRow, '（执行已由您中断，未写入完整回复）');
             }
         }
 
@@ -887,14 +1443,17 @@
             await loadSessions();
         }
 
-        async function loadChatHistory() {
+        async function loadChatHistory(opts) {
+            const silent = opts && opts.silent;
             const sid = getSessionId();
-            setChatStatusLine('正在同步 Redis…');
+            if (!silent) setChatStatusLine('正在加载会话…');
             const res = await api('/chat/history', { session_id: sid });
             if (res.code === 0 && res.messages) {
                 renderChatLog(res.messages);
-                setChatStatusLine('会话「' + sid + '」· 共 ' + res.messages.length + ' 条消息');
-            } else {
+                if (!silent) {
+                    setChatStatusLine('会话「' + sid + '」· 共 ' + res.messages.length + ' 条消息');
+                }
+            } else if (!silent) {
                 setChatStatusLine(res.msg || '加载失败');
                 showToast(res.msg || '加载失败', 'error');
             }
@@ -996,6 +1555,7 @@
                 '<div class="hitl-panel">' +
                 '<div class="hitl-title"><i class="fa-solid fa-user-check mr-1.5"></i>待您确认 · ' + escapeHtml(label) + '</div>' +
                 '<div class="hitl-summary">' + escapeHtml(summary) + '</div>' +
+                '<p class="text-[11px] text-amber-200/80 mt-1 mb-2 leading-relaxed">请点击下方按钮确认或取消；发送「继续」等新消息<strong>不会</strong>继续执行该操作。</p>' +
                 '<div class="hitl-actions">' +
                 '<button type="button" class="hitl-btn-approve" data-hitl="approve"><i class="fa-solid fa-check mr-1"></i>确认执行</button>' +
                 '<button type="button" class="hitl-btn-reject" data-hitl="reject"><i class="fa-solid fa-xmark mr-1"></i>取消</button>' +
@@ -1044,20 +1604,43 @@
                     body.innerHTML = '<div class="text-sky-300 text-sm py-2"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>处理中…</div>';
                 }
             }
-            let res;
+            const streamUrl = wantReasoningStream() ? '/chat/hitl/resume/stream' : null;
+            const reqBody = {
+                session_id: hitlContext.sessionId,
+                action: act,
+                rag_mode: hitlContext.ragMode,
+                rag_query: hitlContext.ragQuery,
+                file_ids: hitlContext.fileIds,
+                include_tool_debug: hitlContext.wantDebug
+            };
+            let res = null;
+            const runSignal = beginChatRun();
             try {
-                res = await api('/chat/hitl/resume', {
-                    session_id: hitlContext.sessionId,
-                    action: act,
-                    rag_mode: hitlContext.ragMode,
-                    rag_query: hitlContext.ragQuery,
-                    file_ids: hitlContext.fileIds,
-                    include_tool_debug: hitlContext.wantDebug
-                });
+                if (streamUrl) {
+                    resetReasoningSteps();
+                    let reasoningPanel = pendingRow ? mountReasoningOnPending(pendingRow) : null;
+                    res = normalizeChatResponse(await consumeSseStream(streamUrl, reqBody, function (ev) {
+                        onReasoningStreamEvent(reasoningPanel, ev);
+                        const log = document.getElementById('chatLog');
+                        if (log) log.scrollTop = log.scrollHeight;
+                    }, runSignal));
+                } else {
+                    res = normalizeChatResponse(await api('/chat/hitl/resume', reqBody, runSignal));
+                }
             } catch (e) {
-                res = { code: -1, msg: String(e) };
+                if (e && e.name === 'AbortError') {
+                    return;
+                }
+                res = { code: -1, msg: String(e.message || e) };
             }
-            if (res.code === 0 && res.status === 'hitl_pending') {
+            if (chatStopRequested) {
+                return;
+            }
+            if (isChatCancelled(res)) {
+                finalizeInterruptedRun(pendingRow, res.msg || '（执行已由您中断，未写入完整回复）');
+                return;
+            }
+            if (isHitlPending(res)) {
                 if (pendingRow) mountHitlPanel(pendingRow, res.hitl, hitlContext);
                 setChatStatusLine('仍有待确认的操作');
                 showToast('请继续确认下一项操作', 'success');
@@ -1065,18 +1648,19 @@
             }
             const savedWantDebug = hitlContext ? hitlContext.wantDebug : false;
             hitlContext = null;
-            if (pendingRow) pendingRow.remove();
-            await loadChatHistory();
-            await loadSessions();
-            if (res.code === 0) {
+            if (isChatSuccess(res)) {
+                finalizePendingAsAssistant(pendingRow, res, currentReasoningSteps.slice());
                 const modeText = res.rag_mode === 'graphrag' ? 'GraphRAG' : (res.rag_used ? 'RAG' : '');
                 setChatStatusLine(res.rag_used ? ('已完成 · 已使用 ' + modeText + ' 检索') : '已完成');
                 if (savedWantDebug && res.tool_debug) showToolDebug(res.tool_debug);
             } else {
+                if (pendingRow) pendingRow.remove();
                 setChatStatusLine(res.msg || '操作失败');
                 showToast(res.msg || '操作失败', 'error');
             }
             setChatUiLocked(false);
+            loadChatHistory({ silent: true }).catch(function () { /* ignore */ });
+            loadSessions().catch(function () { /* ignore */ });
         }
 
         async function sendChatMessage() {
@@ -1090,6 +1674,7 @@
             hideToolDebug();
 
             setChatUiLocked(true);
+            resetReasoningSteps();
             ta.value = '';
 
             let userPreview = escapeHtml(text || '（见附件）');
@@ -1125,44 +1710,64 @@
                 wantDebug: wantDebug
             };
 
-            let res;
+            let res = null;
+            const runSignal = beginChatRun();
             try {
-                res = await api('/chat/message', {
+                const reqBody = {
                     session_id: hitlCtx.sessionId,
                     message: text,
                     file_ids: fileIds,
                     rag_mode: hitlCtx.ragMode,
                     include_tool_debug: wantDebug
-                });
+                };
+                if (wantReasoningStream()) {
+                    let reasoningPanel = mountReasoningOnPending(pending);
+                    res = normalizeChatResponse(await consumeSseStream('/chat/message/stream', reqBody, function (ev) {
+                        onReasoningStreamEvent(reasoningPanel, ev);
+                        log.scrollTop = log.scrollHeight;
+                    }, runSignal));
+                } else {
+                    res = normalizeChatResponse(await api('/chat/message', reqBody, runSignal));
+                }
                 pendingUploads = [];
                 renderPendingUploads();
             } catch (e) {
-                res = { code: -1, msg: String(e) };
+                if (e && e.name === 'AbortError') {
+                    return;
+                }
+                res = { code: -1, msg: String(e.message || e) };
             }
 
-            if (res.code === 0 && res.status === 'hitl_pending') {
-                mountHitlPanel(pending, res.hitl, hitlCtx);
-                setChatStatusLine('等待您确认是否执行：' + (res.hitl && (res.hitl.label || res.hitl.tool) || '敏感操作'));
-                showToast('请确认或取消后再继续', 'success');
+            if (chatStopRequested) {
+                return;
+            }
+            if (isChatCancelled(res)) {
+                finalizeInterruptedRun(pending, res.msg || '（执行已由您中断，未写入完整回复）');
                 return;
             }
 
-            const pend = document.getElementById('chatPendingAssistant');
-            if (pend) pend.remove();
+            if (isHitlPending(res)) {
+                mountHitlPanel(pending, res.hitl, hitlCtx);
+                setChatStatusLine('等待您确认是否执行：' + (res.hitl && (res.hitl.label || res.hitl.tool) || '敏感操作'));
+                showToast('请点「确认执行」继续；勿发送新消息', 'success');
+                return;
+            }
 
-            await loadChatHistory();
-            await loadSessions();
-
-            if (res.code === 0) {
+            if (isChatSuccess(res)) {
+                finalizePendingAsAssistant(pending, res, currentReasoningSteps.slice());
                 const modeText = res.rag_mode === 'graphrag' ? 'GraphRAG' : (res.rag_used ? 'RAG' : '');
                 setChatStatusLine(res.rag_used ? ('已写入 · 已使用 ' + modeText + ' 检索') : '已写入');
                 if (wantDebug && res.tool_debug) showToolDebug(res.tool_debug);
             } else {
+                const pend = document.getElementById('chatPendingAssistant');
+                if (pend) pend.remove();
                 setChatStatusLine(res.msg || '发送失败');
                 showToast(res.msg || '发送失败', 'error');
             }
 
             setChatUiLocked(false);
+            loadChatHistory({ silent: true }).catch(function () { /* ignore */ });
+            loadSessions().catch(function () { /* ignore */ });
         }
 
         document.addEventListener('DOMContentLoaded', function () {

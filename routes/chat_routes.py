@@ -1,9 +1,12 @@
 """对话、上传、会话与 RAG 相关 API。"""
+import asyncio
+import json
+from concurrent import futures
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 
-from async_runner import run_async
+from async_runner import cancel_active_run, iter_sync_from_async_gen, run_async
 
 import chat_store
 import rag_service
@@ -14,6 +17,12 @@ from agent_service import (
     run_agent,
     run_agent_hitl_resume,
     run_agent_with_history,
+)
+from agent_stream import (
+    build_stream_done_payload,
+    build_stream_hitl_payload,
+    stream_agent_hitl_resume,
+    stream_agent_with_history,
 )
 from app_config import LOG_LLM_PROMPT, UPLOADS_DIR
 from app_utils import format_error
@@ -35,6 +44,101 @@ from file_upload import (
 )
 
 bp = Blueprint("chat", __name__)
+
+
+def _sse_payload(data: dict) -> str:
+    try:
+        body = json.dumps(data, ensure_ascii=False, default=str)
+    except Exception as e:
+        body = json.dumps(
+            {"type": "error", "code": -1, "msg": f"SSE 序列化失败：{e}"},
+            ensure_ascii=False,
+        )
+    return f"data: {body}\n\n"
+
+
+def _chat_error_hint(exc: BaseException) -> str:
+    err_name = type(exc).__name__
+    hint = ""
+    if "Timeout" in err_name or "timeout" in str(exc).lower():
+        hint = "（多为文档过长或智谱 API 响应超时，已启用 GraphRAG 精简上下文；可设置 LLM_REQUEST_TIMEOUT=300 后重启）"
+    elif "429" in str(exc) or "too many requests" in str(exc).lower() or "频率" in str(exc):
+        hint = "（智谱 API 触发限速 HTTP 429，已自动重试；若仍失败请增大 API_REQUEST_INTERVAL_SEC / GRAPHRAG_EXTRACT_BATCH_DELAY_SEC 后重启）"
+    return hint
+
+
+def _stream_agent_events(async_gen, *, on_result, run_key: str | None = None):
+    """SSE 生成器：转发 step 事件，在 _agent_result 时调用 on_result。"""
+    yield ": stream-open\n\n"
+    try:
+        for event in iter_sync_from_async_gen(async_gen, run_key=run_key):
+            if event.get("type") == "_agent_result":
+                try:
+                    outs = on_result(event) or []
+                except Exception as e:
+                    outs = [
+                        {
+                            "type": "error",
+                            "code": -1,
+                            "msg": f"保存结果失败：{format_error(e)}",
+                        }
+                    ]
+                for out in outs:
+                    yield _sse_payload(out)
+                continue
+            yield _sse_payload(event)
+    except (asyncio.CancelledError, futures.CancelledError):
+        yield _sse_payload(
+            {
+                "type": "cancelled",
+                "code": 0,
+                "status": "cancelled",
+                "msg": "执行已由用户中断",
+            }
+        )
+    except BaseException as e:
+        yield _sse_payload(
+            {
+                "type": "error",
+                "code": -1,
+                "msg": f"对话失败：{format_error(e)}{_chat_error_hint(e)}",
+            }
+        )
+    yield _sse_payload({"type": "stream_end", "code": 0})
+
+
+def _prepare_chat_message_context(data: dict):
+    """解析 /chat/message 与 /chat/message/stream 共用参数。"""
+    session_id = data.get("session_id") or "default"
+    text = (data.get("message") or "").strip()
+    file_ids = data.get("file_ids") or []
+    if isinstance(file_ids, str):
+        file_ids = [file_ids] if file_ids else []
+    file_ids = [str(x).strip() for x in file_ids if str(x).strip()]
+    include_tool_debug = bool(data.get("include_tool_debug"))
+    rag_mode = rag_service.normalize_rag_mode(data.get("rag_mode"))
+    rag_query = text.strip() or "请根据已上传文档回答用户问题"
+    rag_context = rag_service.build_rag_context(
+        session_id, rag_query, file_ids=file_ids or None, mode=rag_mode
+    )
+    use_rag_attachments = rag_service.should_omit_attachment_body(
+        session_id, file_ids, mode=rag_mode
+    )
+    full_text = build_user_message_text(
+        text,
+        file_ids,
+        session_id,
+        omit_attachment_body=use_rag_attachments,
+    )
+    return {
+        "session_id": session_id,
+        "text": text,
+        "file_ids": file_ids,
+        "include_tool_debug": include_tool_debug,
+        "rag_mode": rag_mode,
+        "rag_context": rag_context,
+        "full_text": full_text,
+    }
 
 
 def _build_chat_success_payload(
@@ -237,35 +341,20 @@ def chat_rag_index():
 @bp.route("/chat/message", methods=["POST"])
 def chat_message():
     data = request.get_json() or {}
-    session_id = data.get("session_id") or "default"
-    text = (data.get("message") or "").strip()
-    file_ids = data.get("file_ids") or []
-    if isinstance(file_ids, str):
-        file_ids = [file_ids] if file_ids else []
-    file_ids = [str(x).strip() for x in file_ids if str(x).strip()]
-    include_tool_debug = bool(data.get("include_tool_debug"))
-    rag_mode = rag_service.normalize_rag_mode(data.get("rag_mode"))
-    rag_query = text.strip() or "请根据已上传文档回答用户问题"
-    rag_context = rag_service.build_rag_context(
-        session_id, rag_query, file_ids=file_ids or None, mode=rag_mode
-    )
-    use_rag_attachments = rag_service.should_omit_attachment_body(
-        session_id, file_ids, mode=rag_mode
-    )
-    full_text = build_user_message_text(
-        text,
-        file_ids,
-        session_id,
-        omit_attachment_body=use_rag_attachments,
-    )
-    if not full_text:
+    ctx = _prepare_chat_message_context(data)
+    if not ctx["full_text"]:
         return jsonify({"code": -1, "msg": "请输入消息或先上传附件"})
+    session_id = ctx["session_id"]
+    file_ids = ctx["file_ids"]
+    include_tool_debug = ctx["include_tool_debug"]
+    rag_mode = ctx["rag_mode"]
+    rag_context = ctx["rag_context"]
     try:
         user_uploads = upload_meta_for_message(file_ids, session_id) if file_ids else None
         chat_store.save_message(
             session_id,
             "user",
-            full_text,
+            ctx["full_text"],
             user_uploads=user_uploads,
         )
         history_rows = chat_store.get_recent_messages(session_id)
@@ -277,7 +366,8 @@ def chat_message():
                 rag_context=rag_context,
                 session_id=session_id,
                 log_prompt=LOG_LLM_PROMPT or include_tool_debug,
-            )
+            ),
+            run_key=session_id,
         )
         if hitl_pending:
             pending = hitl_pending[0] if hitl_pending else {}
@@ -318,13 +408,114 @@ def chat_message():
             )
         )
     except Exception as e:
-        err_name = type(e).__name__
-        hint = ""
-        if "Timeout" in err_name or "timeout" in str(e).lower():
-            hint = "（多为文档过长或智谱 API 响应超时，已启用 GraphRAG 精简上下文；可设置 LLM_REQUEST_TIMEOUT=300 后重启）"
-        elif "429" in str(e) or "too many requests" in str(e).lower() or "频率" in str(e):
-            hint = "（智谱 API 触发限速 HTTP 429，已自动重试；若仍失败请增大 API_REQUEST_INTERVAL_SEC / GRAPHRAG_EXTRACT_BATCH_DELAY_SEC 后重启）"
-        return jsonify({"code": -1, "msg": f"对话失败：{format_error(e)}{hint}"})
+        return jsonify({"code": -1, "msg": f"对话失败：{format_error(e)}{_chat_error_hint(e)}"})
+
+
+@bp.route("/chat/message/stream", methods=["POST"])
+def chat_message_stream():
+    """SSE：流式推送 Agent Thought → Action → Observation。"""
+    data = request.get_json() or {}
+    ctx = _prepare_chat_message_context(data)
+    if not ctx["full_text"]:
+        return jsonify({"code": -1, "msg": "请输入消息或先上传附件"})
+    session_id = ctx["session_id"]
+    file_ids = ctx["file_ids"]
+    include_tool_debug = ctx["include_tool_debug"]
+    rag_mode = ctx["rag_mode"]
+    rag_context = ctx["rag_context"]
+    agent_system_prompt = chat_agent_prompt_with_rag(rag_context)
+
+    user_uploads = upload_meta_for_message(file_ids, session_id) if file_ids else None
+    chat_store.save_message(
+        session_id,
+        "user",
+        ctx["full_text"],
+        user_uploads=user_uploads,
+    )
+    history_rows = chat_store.get_recent_messages(session_id)
+    lc_messages = dict_history_to_lc_messages(history_rows)
+
+    async_gen = stream_agent_with_history(
+        lc_messages,
+        rag_context=rag_context,
+        session_id=session_id,
+        log_prompt=LOG_LLM_PROMPT or include_tool_debug,
+    )
+
+    def on_result(event: dict):
+        reply = event.get("reply")
+        msgs = event.get("messages") or []
+        hitl_pending = event.get("hitl")
+        if hitl_pending:
+            return [build_stream_hitl_payload(
+                session_id=session_id,
+                hitl_pending=hitl_pending,
+                rag_mode=rag_mode,
+            )]
+        if not reply:
+            return [{
+                "type": "error",
+                "code": -1,
+                "msg": "Agent 在工具调用阶段中断且未完成，请刷新后重试；若涉及发邮件/微信请点击「确认执行」",
+            }]
+        chat_store.save_message(
+            session_id,
+            "assistant",
+            reply,
+            mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
+        )
+        return [
+            build_stream_done_payload(
+                session_id=session_id,
+                reply=reply,
+                msgs=msgs,
+                rag_context=rag_context,
+                rag_mode=rag_mode,
+                include_tool_debug=include_tool_debug,
+                agent_system_prompt=agent_system_prompt,
+            )
+        ]
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return Response(
+        _stream_agent_events(async_gen, on_result=on_result, run_key=session_id),
+        mimetype="text/event-stream; charset=utf-8",
+        headers=headers,
+    )
+
+
+@bp.route("/chat/cancel", methods=["POST"])
+def chat_cancel():
+    """用户主动打断：取消正在执行的 Agent，并清理 checkpoint。"""
+    data = request.get_json() or {}
+    session_id = (data.get("session_id") or "default").strip() or "default"
+    cancelled = cancel_active_run(session_id)
+    try:
+        from agent_checkpointer import reset_agent_thread
+
+        run_async(reset_agent_thread(session_id))
+    except Exception as e:
+        if not cancelled:
+            return jsonify(
+                {
+                    "code": -1,
+                    "msg": f"停止失败：{format_error(e)}",
+                    "cancelled": False,
+                    "session_id": session_id,
+                }
+            )
+    return jsonify(
+        {
+            "code": 0,
+            "msg": "已停止执行",
+            "cancelled": cancelled,
+            "session_id": session_id,
+        }
+    )
 
 
 @bp.route("/chat/hitl/resume", methods=["POST"])
@@ -353,7 +544,8 @@ def chat_hitl_resume():
                 action,
                 rag_context=rag_context,
                 log_prompt=LOG_LLM_PROMPT or include_tool_debug,
-            )
+            ),
+            run_key=session_id,
         )
         if hitl_pending:
             pending = hitl_pending[0] if hitl_pending else {}
@@ -394,6 +586,82 @@ def chat_hitl_resume():
         )
     except Exception as e:
         return jsonify({"code": -1, "msg": f"HITL 恢复失败：{format_error(e)}"})
+
+
+@bp.route("/chat/hitl/resume/stream", methods=["POST"])
+def chat_hitl_resume_stream():
+    """SSE：HITL 确认/取消后继续流式 Agent。"""
+    data = request.get_json() or {}
+    session_id = data.get("session_id") or "default"
+    action = (data.get("action") or "").strip().lower()
+    if action not in ("approve", "reject"):
+        return jsonify({"code": -1, "msg": "action 须为 approve 或 reject"})
+    include_tool_debug = bool(data.get("include_tool_debug"))
+    rag_mode = rag_service.normalize_rag_mode(data.get("rag_mode"))
+    rag_query = (data.get("rag_query") or "").strip() or "请继续完成上一轮任务"
+    file_ids = data.get("file_ids") or []
+    if isinstance(file_ids, str):
+        file_ids = [file_ids] if file_ids else []
+    file_ids = [str(x).strip() for x in file_ids if str(x).strip()]
+    rag_context = rag_service.build_rag_context(
+        session_id, rag_query, file_ids=file_ids or None, mode=rag_mode
+    )
+    agent_system_prompt = chat_agent_prompt_with_rag(rag_context)
+
+    async_gen = stream_agent_hitl_resume(
+        session_id,
+        action,
+        rag_context=rag_context,
+        log_prompt=LOG_LLM_PROMPT or include_tool_debug,
+    )
+
+    def on_result(event: dict):
+        reply = event.get("reply")
+        msgs = event.get("messages") or []
+        hitl_pending = event.get("hitl")
+        if hitl_pending:
+            return [build_stream_hitl_payload(
+                session_id=session_id,
+                hitl_pending=hitl_pending,
+                rag_mode=rag_mode,
+            )]
+        if not reply:
+            return [{
+                "type": "error",
+                "code": -1,
+                "msg": "Agent 在工具调用阶段中断且未完成，请刷新后重试；若涉及发邮件/微信请点击「确认执行」",
+            }]
+        chat_store.save_message(
+            session_id,
+            "assistant",
+            reply,
+            mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
+        )
+        return [
+            build_stream_done_payload(
+                session_id=session_id,
+                reply=reply,
+                msgs=msgs,
+                rag_context=rag_context,
+                rag_mode=rag_mode,
+                include_tool_debug=include_tool_debug,
+                agent_system_prompt=agent_system_prompt,
+            )
+        ]
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    try:
+        return Response(
+            _stream_agent_events(async_gen, on_result=on_result, run_key=session_id),
+            mimetype="text/event-stream; charset=utf-8",
+            headers=headers,
+        )
+    except Exception as e:
+        return jsonify({"code": -1, "msg": f"HITL 流式恢复失败：{format_error(e)}"})
 
 
 @bp.route("/ai/run", methods=["POST"])
