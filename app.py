@@ -10,16 +10,16 @@ if sys.platform == "win32":
 from flask import Flask
 from flask_cors import CORS
 
-from app_config import BASE_DIR, FLASK_HOST, FLASK_PORT, MCP_HOST, MCP_PORT, MCP_URL
-from async_runner import setup_async_services
-import mcp_lifecycle
+from config.app_config import BASE_DIR, FLASK_HOST, FLASK_PORT, MCP_HOST, MCP_PORT, MCP_URL
+from core.async_runner import setup_async_services
+import app_mcp.mcp_lifecycle as mcp_lifecycle
 from routes import register_routes
 
 
 def create_app() -> Flask:
     application = Flask(__name__, template_folder=str(BASE_DIR / "template"))
     CORS(application)
-    from chat_store import init_chat_store
+    from chat.chat_store import init_chat_store
 
     init_chat_store()
     setup_async_services()

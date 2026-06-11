@@ -6,11 +6,11 @@ from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request
 
-from async_runner import cancel_active_run, iter_sync_from_async_gen, run_async
+from core.async_runner import cancel_active_run, iter_sync_from_async_gen, run_async
 
-import chat_store
-import rag_service
-from agent_service import (
+import chat.chat_store as chat_store
+import rag.rag_service as rag_service
+from agent.agent_service import (
     chat_agent_prompt_with_rag,
     hitl_available,
     prompt_debug_payload,
@@ -18,22 +18,22 @@ from agent_service import (
     run_agent_hitl_resume,
     run_agent_with_history,
 )
-from agent_stream import (
+from agent.agent_stream import (
     build_stream_done_payload,
     build_stream_hitl_payload,
     stream_agent_hitl_resume,
     stream_agent_with_history,
 )
-from app_config import LOG_LLM_PROMPT, UPLOADS_DIR
-from app_utils import format_error
-from chat_helpers import (
+from config.app_config import LOG_LLM_PROMPT, UPLOADS_DIR
+from core.app_utils import format_error
+from chat.chat_helpers import (
     build_tool_debug_from_messages,
     build_user_message_text,
     extract_mcp_attachments_from_messages,
     upload_meta_for_message,
 )
-from chat_summary import prepare_agent_lc_messages
-from file_upload import (
+from chat.chat_summary import prepare_agent_lc_messages
+from upload.file_upload import (
     ALLOWED_EXT,
     DOC_EXT,
     MAX_UPLOAD_BYTES,
@@ -497,7 +497,7 @@ def chat_cancel():
     session_id = (data.get("session_id") or "default").strip() or "default"
     cancelled = cancel_active_run(session_id)
     try:
-        from agent_checkpointer import reset_agent_thread
+        from agent.agent_checkpointer import reset_agent_thread
 
         run_async(reset_agent_thread(session_id))
     except Exception as e:

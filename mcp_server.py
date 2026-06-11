@@ -8,30 +8,28 @@ from datetime import datetime
 from email.message import EmailMessage
 from pathlib import Path
 
+from config.app_config import BASE_DIR
+
 import requests
 from fastmcp import FastMCP
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 from prettytable import PrettyTable
-from dotenv import load_dotenv  # 新增
 
-BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(dotenv_path=BASE_DIR / ".env") # 自动读取.env写入环境变量
 # 邮箱配置（从 .env 读取，不硬编码）
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")
 SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.163.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
-BASE_DIR = Path(__file__).resolve().parent
 EXPORT_DIR = BASE_DIR / "exports"
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 # 初始化（微信工具见 wechat_mcp.py，延迟加载便于 Linux/Docker 下仍启动其它 MCP 工具）
 mcp = FastMCP("wxauto_mcp")
 
-from wechat_mcp import register_wechat_tools
-from filesystem_mcp import register_filesystem_tools
+from app_mcp.wechat_mcp import register_wechat_tools
+from app_mcp.filesystem_mcp import register_filesystem_tools
 
 register_wechat_tools(mcp)
 register_filesystem_tools(mcp)

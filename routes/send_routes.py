@@ -1,8 +1,8 @@
 """微信 / 邮件直发接口。"""
 from flask import Blueprint, jsonify, request
 
-from agent_service import send_email_agent, send_wechat_agent
-from async_runner import run_async
+from agent.agent_service import send_email_agent, send_wechat_agent
+from core.async_runner import run_async
 
 bp = Blueprint("send", __name__)
 

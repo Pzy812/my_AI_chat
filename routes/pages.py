@@ -3,7 +3,7 @@ from pathlib import Path
 
 from flask import Blueprint, abort, render_template, send_from_directory
 
-from app_config import EXPORTS_DIR
+from config.app_config import EXPORTS_DIR
 
 bp = Blueprint("pages", __name__)
 

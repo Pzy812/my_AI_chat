@@ -3,7 +3,7 @@ import time
 
 from flask import Blueprint, jsonify
 
-import mcp_lifecycle
+import app_mcp.mcp_lifecycle as mcp_lifecycle
 
 bp = Blueprint("service", __name__)
 
