@@ -2,7 +2,7 @@
 页面总览<img width="1499" height="855" alt="image" src="https://github.com/user-attachments/assets/4d372a7a-f40e-4159-b5d9-0b92d1d62a93" />
 
 可以让AI给你在本地发微信消息，发邮箱信息，检索文档，联网搜索等功能
-![Uploading image.png…]()
+<img width="931" height="716" alt="image" src="https://github.com/user-attachments/assets/ad601c87-70d3-4a3e-8a0f-7f454af34800" />
 用户可以选择上传文件用那种解析方式（普通的rag或者graphRag）
 <img width="1230" height="876" alt="c6e34aa7c7f7c08fb1df9a7d04c7b908" src="https://github.com/user-attachments/assets/40effeea-fd0d-48c4-9e77-74813a842650" />
 <img width="1601" height="1020" alt="cfa8542710e8a0d6b32d8e9c77eda115" src="https://github.com/user-attachments/assets/829308b6-f5a4-4efe-a5e4-25ce8daa47fc" />
@@ -13,3 +13,11 @@
 
 <img width="843" height="696" alt="331cb935bf0177a1d04f2d00ad696f38" src="https://github.com/user-attachments/assets/2d8ea44b-0d9d-409f-8e22-c68aaf5f5770" />
 
+改了前端的页面布局前面的功能不变增加了harness机制
+<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/d07e35d8-57da-4149-bac8-51cebc08751d" />
+
+<img width="851" height="636" alt="9be759f27e5c9539d949852bf74c95fb" src="https://github.com/user-attachments/assets/2abe1f4d-4d76-431d-b82f-7ad725df4632" />
+<img width="1009" height="570" alt="03932624a2de0bb63f3ef20579c4d215" src="https://github.com/user-attachments/assets/32dd1973-8ee5-4714-9bb8-c8feed555ccc" />
+<img width="1080" height="2376" alt="0bfc68713cd735ad61a77bffea5667fb" src="https://github.com/user-attachments/assets/d992cc6d-0975-482f-85d9-b27e12b1ef59" />
+最后步骤
+![Uploading image.png…]()
