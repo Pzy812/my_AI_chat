@@ -3,12 +3,20 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from langgraph.types import Command
 from mcp import ClientSession, types
-from mcp.client.streamable_http import streamable_http_client
 
+from app_mcp.mcp_http_client import open_mcp_transport
 from agent.agent_checkpointer import get_checkpointer, reset_agent_thread
-from config.app_config import HITL_ENABLED, LOG_LLM_PROMPT_MAX, MCP_URL, logger
+from config.app_config import HITL_ENABLED, LOG_LLM_PROMPT_MAX, logger
 from chat.chat_helpers import last_assistant_text, messages_have_pending_tool_calls
 from agent.hitl_tools import normalize_interrupts, wrap_tools_with_hitl
+from agent.harness import (
+    TASK_DISCIPLINE_PROMPT,
+    build_initial_agent_state,
+    make_post_model_hook,
+    make_pre_model_hook,
+    wrap_tools_with_phase_gate,
+)
+from agent.task_state import TaskHarnessState
 from llm.llm_zhipu import make_chat_llm
 import app_mcp.mcp_lifecycle as mcp_lifecycle
 
@@ -26,7 +34,7 @@ CHAT_AGENT_PROMPT = (
     "如果 web_search 工具可用，不要回答“没有实时查询能力”或让用户自行去网站查询。\n"
     "用户要表格展示时用 format_pretty_table；明确要求导出 / 保存为 Excel 时用 export_to_excel，并传入表头 headers 与二维 rows（表格/Excel 执行前需用户确认）。\n"
     "纯聊天可直接回答。"
-)
+) + TASK_DISCIPLINE_PROMPT
 
 CHAT_OFFLINE_PROMPT_SUFFIX = (
     "\n（说明：当前未连接 MCP 工具服务，你只能根据对话与附件内容作答，"
@@ -111,15 +119,26 @@ async def langchain_tools_from_mcp_session(session: ClientSession):
         )
         for t in defs
     ]
-    return wrap_tools_with_hitl(tools, enabled=hitl_available())
+    tools = wrap_tools_with_phase_gate(wrap_tools_with_hitl(tools, enabled=hitl_available()))
+    return tools
 
 
 async def _create_agent(llm, tools: list, rag_context: str | None):
     prompt = chat_agent_prompt_with_rag(rag_context)
     checkpointer = get_checkpointer()
+    kwargs: dict = {
+        "model": llm,
+        "tools": tools,
+        "prompt": prompt,
+        "state_schema": TaskHarnessState,
+        "pre_model_hook": make_pre_model_hook(),
+        "post_model_hook": make_post_model_hook(),
+        "version": "v2",
+    }
     if checkpointer is not None:
-        return create_react_agent(llm, tools, prompt=prompt, checkpointer=checkpointer)
-    return create_react_agent(llm, tools, prompt=prompt)
+        kwargs["checkpointer"] = checkpointer
+        return create_react_agent(**kwargs)
+    return create_react_agent(**kwargs)
 
 
 async def _invoke_agent(
@@ -129,18 +148,38 @@ async def _invoke_agent(
     lc_messages: list | None = None,
     resume_action: str | None = None,
     fresh_thread: bool = True,
+    file_count: int = 0,
 ) -> tuple[str | None, list, list[dict] | None]:
     """返回 (reply_text|None, messages, hitl_pending|None)。"""
+    from config.app_config import AGENT_RECURSION_LIMIT
+
     checkpointer = get_checkpointer()
-    config = {"configurable": {"thread_id": session_id}} if checkpointer else {}
+    config = {
+        "configurable": {"thread_id": session_id},
+        "recursion_limit": AGENT_RECURSION_LIMIT,
+    } if checkpointer else {"recursion_limit": AGENT_RECURSION_LIMIT}
     if checkpointer and fresh_thread and resume_action is None:
         await reset_agent_thread(session_id)
     if resume_action is not None:
+        if checkpointer:
+            try:
+                from agent.harness import sync_run_context_from_values
+
+                snap = await agent.aget_state(config)
+                if snap and snap.values:
+                    sync_run_context_from_values(session_id, dict(snap.values))
+            except Exception:
+                pass
         state = await agent.ainvoke(
             Command(resume={"action": resume_action}), config=config
         )
     else:
-        state = await agent.ainvoke({"messages": lc_messages or []}, config=config)
+        input_state = await build_initial_agent_state(
+            lc_messages or [],
+            session_id=session_id,
+            file_count=file_count,
+        )
+        state = await agent.ainvoke(input_state, config=config)
     hitl = normalize_interrupts(state.get("__interrupt__"))
     msgs = state.get("messages") or []
     pending = messages_have_pending_tool_calls(msgs)
@@ -166,6 +205,7 @@ async def _invoke_react_agent(
     session_id: str,
     resume_action: str | None = None,
     fresh_thread: bool = True,
+    file_count: int = 0,
 ) -> tuple[str | None, list, list[dict] | None]:
     agent = await _create_agent(llm, tools, rag_context)
     return await _invoke_agent(
@@ -174,18 +214,19 @@ async def _invoke_react_agent(
         lc_messages=lc_messages,
         resume_action=resume_action,
         fresh_thread=fresh_thread,
+        file_count=file_count,
     )
 
 
 async def run_agent(prompt: str) -> str:
-    if not mcp_lifecycle.ensure_mcp_server_started():
+    if not await mcp_lifecycle.ensure_mcp_server_started_async():
         from config.app_config import MCP_HOST, MCP_PORT
 
         raise RuntimeError(
             f"MCP 未在 {MCP_HOST}:{MCP_PORT} 就绪，请另开终端运行: python mcp_server.py"
         )
     llm = make_chat_llm()
-    async with streamable_http_client(MCP_URL) as (r, w, _):
+    async with open_mcp_transport() as (r, w, _):
         async with ClientSession(r, w) as session:
             tools = await langchain_tools_from_mcp_session(session)
             checkpointer = get_checkpointer()
@@ -229,11 +270,12 @@ async def run_agent_with_history(
     *,
     session_id: str = "",
     log_prompt: bool = False,
+    file_count: int = 0,
 ) -> tuple[str | None, list, list[dict] | None]:
     """带完整上下文的 Agent；返回 (助手文本|None, 消息列表, HITL pending|None)。"""
     from core.app_utils import format_error
 
-    if not mcp_lifecycle.ensure_mcp_server_started():
+    if not await mcp_lifecycle.ensure_mcp_server_started_async():
         return await run_chat_llm_only(
             lc_messages,
             rag_context=rag_context,
@@ -249,7 +291,7 @@ async def run_agent_with_history(
                 rag_context=rag_context,
             )
         llm = make_chat_llm()
-        async with streamable_http_client(MCP_URL) as (r, w, _):
+        async with open_mcp_transport() as (r, w, _):
             async with ClientSession(r, w) as session:
                 tools = await langchain_tools_from_mcp_session(session)
                 return await _invoke_react_agent(
@@ -259,6 +301,7 @@ async def run_agent_with_history(
                     rag_context=rag_context,
                     session_id=session_id,
                     fresh_thread=True,
+                    file_count=file_count,
                 )
     except BaseException as e:
         logger.warning(
@@ -281,7 +324,7 @@ async def run_agent_hitl_resume(
     log_prompt: bool = False,
 ) -> tuple[str | None, list, list[dict] | None]:
     """用户确认/取消后，从 checkpoint 继续 Agent（不再 reset thread）。"""
-    if not mcp_lifecycle.ensure_mcp_server_started():
+    if not await mcp_lifecycle.ensure_mcp_server_started_async():
         raise RuntimeError("MCP 未就绪，无法恢复 HITL 会话")
     if not hitl_available():
         raise RuntimeError("HITL 未启用或未配置 Postgres Checkpointer")
@@ -293,7 +336,7 @@ async def run_agent_hitl_resume(
             rag_context=rag_context,
         )
     llm = make_chat_llm()
-    async with streamable_http_client(MCP_URL) as (r, w, _):
+    async with open_mcp_transport() as (r, w, _):
         async with ClientSession(r, w) as session:
             tools = await langchain_tools_from_mcp_session(session)
             return await _invoke_react_agent(
@@ -309,7 +352,7 @@ async def run_agent_hitl_resume(
 
 async def send_wechat_agent(name: str, content: str) -> None:
     llm = make_chat_llm()
-    async with streamable_http_client(MCP_URL) as (r, w, _):
+    async with open_mcp_transport() as (r, w, _):
         async with ClientSession(r, w) as session:
             tools = await langchain_tools_from_mcp_session(session)
             agent = create_react_agent(llm, tools)
@@ -329,7 +372,7 @@ async def send_wechat_agent(name: str, content: str) -> None:
 
 async def send_email_agent(to: str, content: str) -> None:
     llm = make_chat_llm()
-    async with streamable_http_client(MCP_URL) as (r, w, _):
+    async with open_mcp_transport() as (r, w, _):
         async with ClientSession(r, w) as session:
             tools = await langchain_tools_from_mcp_session(session)
             agent = create_react_agent(llm, tools)

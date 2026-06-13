@@ -66,3 +66,14 @@ AGENT_CHECKPOINT_ENABLED = os.getenv("AGENT_CHECKPOINT_ENABLED", "1").strip().lo
 )
 UPLOAD_META_TTL_SEC = int(os.getenv("UPLOAD_META_TTL_SEC", str(7 * 24 * 3600)))
 HITL_ENABLED = os.getenv("HITL_ENABLED", "1").strip().lower() not in ("0", "false", "no")
+
+# Task Harness：复杂任务计划 / 阶段 gate / 上下文裁剪
+AGENT_TASK_HARNESS = os.getenv("AGENT_TASK_HARNESS", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+)
+AGENT_TASK_HARNESS_MIN_SIGNALS = int(os.getenv("AGENT_TASK_HARNESS_MIN_SIGNALS", "1"))
+AGENT_LLM_CONTEXT_MESSAGES = int(os.getenv("AGENT_LLM_CONTEXT_MESSAGES", "10"))
+AGENT_REANCHOR_EVERY_N_TOOLS = int(os.getenv("AGENT_REANCHOR_EVERY_N_TOOLS", "3"))
+AGENT_RECURSION_LIMIT = int(os.getenv("AGENT_RECURSION_LIMIT", "100"))

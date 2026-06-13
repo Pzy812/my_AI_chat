@@ -47,7 +47,7 @@ class ChatZhipuAI(_BaseChatZhipuAI):
             "Accept": "application/json",
         }
         timeout = httpx.Timeout(self.request_timeout)
-        with httpx.Client(headers=headers, timeout=timeout) as client:
+        with httpx.Client(headers=headers, timeout=timeout, trust_env=False) as client:
             def _post() -> httpx.Response:
                 response = client.post(self.zhipuai_api_base, json=payload)  # type: ignore[arg-type]
                 response.raise_for_status()
@@ -84,7 +84,7 @@ class ChatZhipuAI(_BaseChatZhipuAI):
             "Accept": "application/json",
         }
         timeout = httpx.Timeout(self.request_timeout)
-        async with httpx.AsyncClient(headers=headers, timeout=timeout) as client:
+        async with httpx.AsyncClient(headers=headers, timeout=timeout, trust_env=False) as client:
             async def _post() -> httpx.Response:
                 response = await client.post(self.zhipuai_api_base, json=payload)  # type: ignore[arg-type]
                 response.raise_for_status()

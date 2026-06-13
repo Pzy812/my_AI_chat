@@ -1,5 +1,13 @@
 """Flask 应用入口：创建 app 并启动 Web 服务。"""
+import os
 import sys
+
+# Windows 系统代理常导致 httpx 无法直连 localhost（MCP/Redis 等）
+_NO_PROXY_HOSTS = "localhost,127.0.0.1,0.0.0.0"
+for _proxy_key in ("NO_PROXY", "no_proxy"):
+    _cur = os.environ.get(_proxy_key, "")
+    if "127.0.0.1" not in _cur:
+        os.environ[_proxy_key] = f"{_cur},{_NO_PROXY_HOSTS}".strip(",")
 
 # Windows 下 psycopg 需要 SelectorEventLoop（须在创建任何 loop 之前）
 if sys.platform == "win32":
@@ -31,6 +39,9 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    from agent.agent_checkpointer import checkpointer_kind
+    from agent.agent_service import hitl_available
+
     if mcp_lifecycle.ensure_mcp_server_started():
         print(f"MCP 已就绪: {MCP_URL}")
     else:
@@ -38,6 +49,11 @@ if __name__ == "__main__":
             f"警告: MCP 未在 {MCP_PORT} 端口就绪，对话将降级为纯模型（附件问答仍可用）。"
             " 可手动运行: python mcp_server.py"
         )
+    cp = checkpointer_kind()
+    if hitl_available():
+        print(f"Human-in-the-Loop 已启用（checkpointer={cp}，发邮件/微信等需前端确认）")
+    else:
+        print("警告: Human-in-the-Loop 未启用，敏感 MCP 工具将直接执行（需 HITL_ENABLED=1 且 checkpointer 就绪）")
     app.run(
         host=FLASK_HOST,
         port=FLASK_PORT,

@@ -6,7 +6,12 @@ from pathlib import Path
 
 from flask import Blueprint, Response, jsonify, request
 
-from core.async_runner import cancel_active_run, iter_sync_from_async_gen, run_async
+from core.async_runner import (
+    cancel_active_run,
+    iter_sync_from_async_gen,
+    run_async,
+    schedule_async,
+)
 
 import chat.chat_store as chat_store
 import rag.rag_service as rag_service
@@ -64,6 +69,8 @@ def _chat_error_hint(exc: BaseException) -> str:
         hint = "（多为文档过长或智谱 API 响应超时，已启用 GraphRAG 精简上下文；可设置 LLM_REQUEST_TIMEOUT=300 后重启）"
     elif "429" in str(exc) or "too many requests" in str(exc).lower() or "频率" in str(exc):
         hint = "（智谱 API 触发限速 HTTP 429，已自动重试；若仍失败请增大 API_REQUEST_INTERVAL_SEC / GRAPHRAG_EXTRACT_BATCH_DELAY_SEC 后重启）"
+    elif "connection attempts failed" in str(exc).lower() or "connecterror" in str(exc).lower():
+        hint = "（多为 Windows 系统代理导致无法连接本机 MCP；已修复 trust_env，请重启 app.py 与 mcp_server.py；或检查 MCP 8090 端口）"
     return hint
 
 
@@ -366,6 +373,7 @@ def chat_message():
                 rag_context=rag_context,
                 session_id=session_id,
                 log_prompt=LOG_LLM_PROMPT or include_tool_debug,
+                file_count=len(file_ids),
             )
 
         reply, msgs, hitl_pending = run_async(_invoke_chat(), run_key=session_id)
@@ -433,12 +441,38 @@ def chat_message_stream():
         user_uploads=user_uploads,
     )
     async def _stream_with_summary():
+        from agent.harness import (
+            extract_user_goal,
+            needs_task_harness,
+            task_harness_event_payload,
+        )
+        from agent.task_state import default_task_fields
+
+        yield {
+            "type": "step",
+            "phase": "status",
+            "content": "正在准备对话上下文…",
+        }
         lc_messages = await prepare_agent_lc_messages(session_id)
+        user_goal = extract_user_goal(lc_messages)
+        if user_goal:
+            preview = default_task_fields()
+            preview["user_goal"] = user_goal
+            preview["harness_enabled"] = needs_task_harness(
+                user_goal, file_count=len(file_ids)
+            )
+            yield task_harness_event_payload(preview)
+        yield {
+            "type": "step",
+            "phase": "status",
+            "content": "正在生成任务计划并启动 Agent…",
+        }
         async for event in stream_agent_with_history(
             lc_messages,
             rag_context=rag_context,
             session_id=session_id,
             log_prompt=LOG_LLM_PROMPT or include_tool_debug,
+            file_count=len(file_ids),
         ):
             yield event
 
@@ -496,10 +530,11 @@ def chat_cancel():
     data = request.get_json() or {}
     session_id = (data.get("session_id") or "default").strip() or "default"
     cancelled = cancel_active_run(session_id)
+    # 勿 run_async(reset)：会与仍在 loop 上的 Agent 争抢，导致 /chat/cancel 本身卡死
     try:
         from agent.agent_checkpointer import reset_agent_thread
 
-        run_async(reset_agent_thread(session_id))
+        schedule_async(reset_agent_thread(session_id))
     except Exception as e:
         if not cancelled:
             return jsonify(

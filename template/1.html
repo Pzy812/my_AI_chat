@@ -1,9 +1,15 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 连续对话 · Redis 记忆</title>
+    <script>
+        (function () {
+            var t = localStorage.getItem('aiChatTheme');
+            if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,23 +32,331 @@
         }
     </script>
     <style>
+        :root[data-theme="dark"] {
+            --bg-body-1: #0a0f1a;
+            --bg-body-2: #0c1222;
+            --bg-panel: linear-gradient(145deg, rgba(30,41,59,0.88) 0%, rgba(15,23,42,0.94) 100%);
+            --bg-chat: linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(10,15,28,0.92) 100%);
+            --bg-composer: rgba(15,23,42,0.72);
+            --bg-input: rgba(15,23,42,0.8);
+            --bg-bubble-assistant: rgba(30,41,59,0.95);
+            --bg-feature: rgba(15,23,42,0.55);
+            --bg-ghost: rgba(30,41,59,0.5);
+            --bg-ghost-hover: rgba(51,65,85,0.55);
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --text-heading: #ffffff;
+            --border: rgba(148,163,184,0.14);
+            --border-soft: rgba(148,163,184,0.12);
+            --shadow-panel: 0 25px 50px -12px rgba(0,0,0,0.5);
+            --accent-sky: #38bdf8;
+            --accent-violet: #c4b5fd;
+        }
+        :root[data-theme="light"] {
+            --bg-body-1: #eef2ff;
+            --bg-body-2: #f8fafc;
+            --bg-panel: linear-gradient(145deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%);
+            --bg-chat: linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(241,245,249,0.96) 100%);
+            --bg-composer: rgba(255,255,255,0.92);
+            --bg-input: #ffffff;
+            --bg-bubble-assistant: #ffffff;
+            --bg-feature: rgba(241,245,249,0.9);
+            --bg-ghost: rgba(241,245,249,0.95);
+            --bg-ghost-hover: rgba(226,232,240,0.95);
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --text-muted: #64748b;
+            --text-heading: #0f172a;
+            --border: rgba(148,163,184,0.35);
+            --border-soft: rgba(148,163,184,0.22);
+            --shadow-panel: 0 20px 40px -16px rgba(15,23,42,0.12);
+            --accent-sky: #0284c7;
+            --accent-violet: #7c3aed;
+        }
         body {
             font-family: 'DM Sans', system-ui, sans-serif;
-            background: radial-gradient(1200px 600px at 10% -10%, rgba(59,130,246,0.18), transparent),
-                        radial-gradient(900px 500px at 100% 0%, rgba(139,92,246,0.12), transparent),
-                        linear-gradient(180deg, #0a0f1a 0%, #0c1222 40%, #0a0f1a 100%);
-            min-height: 100vh;
+            color: var(--text-primary);
+            background:
+                radial-gradient(1200px 600px at 10% -10%, rgba(59,130,246,0.14), transparent),
+                radial-gradient(900px 500px at 100% 0%, rgba(139,92,246,0.08), transparent),
+                linear-gradient(180deg, var(--bg-body-1) 0%, var(--bg-body-2) 40%, var(--bg-body-1) 100%);
+            height: 100vh;
+            overflow: hidden;
         }
-        .glass-panel {
-            background: linear-gradient(145deg, rgba(30,41,59,0.88) 0%, rgba(15,23,42,0.94) 100%);
-            border: 1px solid rgba(148,163,184,0.14);
-            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.05);
-            backdrop-filter: blur(14px);
-            transition: border-color 0.2s ease, box-shadow 0.25s ease;
+        .app-layout {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+            overflow: hidden;
         }
-        .glass-panel:hover {
-            border-color: rgba(148,163,184,0.22);
-            box-shadow: 0 28px 60px -12px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06);
+        .sidebar-panel {
+            width: 100%;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 1rem 1rem 1.25rem;
+            border-right: 1px solid var(--border-soft);
+            background: var(--bg-panel);
+            overflow: hidden;
+        }
+        @media (min-width: 1024px) {
+            .sidebar-panel {
+                width: 360px;
+                padding: 1.15rem 1.1rem 1.25rem;
+            }
+        }
+        @media (min-width: 1280px) {
+            .sidebar-panel { width: 380px; }
+        }
+        .sidebar-brand {
+            flex-shrink: 0;
+            margin-bottom: 0.85rem;
+        }
+        .sidebar-sessions-block {
+            flex-shrink: 0;
+            margin-bottom: 0.85rem;
+        }
+        .sidebar-features-block {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .sidebar-features-scroll {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding-right: 2px;
+        }
+        .sidebar-features-scroll::-webkit-scrollbar { width: 5px; }
+        .sidebar-features-scroll::-webkit-scrollbar-thumb {
+            background: rgba(100,116,139,0.3);
+            border-radius: 99px;
+        }
+        #sessionAsideList {
+            max-height: 140px;
+            overflow-y: auto;
+        }
+        .feature-pill-compact {
+            border-radius: 12px;
+            border: 1px solid var(--border-soft);
+            background: var(--bg-feature);
+            padding: 0.65rem 0.75rem;
+            display: flex;
+            gap: 0.65rem;
+            align-items: flex-start;
+        }
+        .feature-pill-compact .feat-icon {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.85rem;
+        }
+        .feature-pill-compact .feat-title {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            line-height: 1.35;
+        }
+        .feature-pill-compact .feat-desc {
+            font-size: 0.6875rem;
+            color: var(--text-muted);
+            line-height: 1.45;
+            margin-top: 0.15rem;
+        }
+        .chat-main-panel {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            background: transparent;
+        }
+        [data-theme="dark"] .chat-main-panel {
+            background: rgba(10,15,26,0.35);
+        }
+        [data-theme="light"] .chat-main-panel {
+            background: rgba(255,255,255,0.5);
+        }
+        .chat-toolbar {
+            flex-shrink: 0;
+            padding: 0.85rem 1rem 0.65rem;
+            border-bottom: 1px solid var(--border-soft);
+        }
+        @media (min-width: 640px) {
+            .chat-toolbar { padding: 0.9rem 1.25rem 0.7rem; }
+        }
+        .settings-details {
+            flex-shrink: 0;
+            margin: 0 1rem;
+            border: 1px solid var(--border-soft);
+            border-radius: 12px;
+            background: var(--bg-feature);
+        }
+        @media (min-width: 640px) {
+            .settings-details { margin: 0 1.25rem; }
+        }
+        .settings-details > summary {
+            cursor: pointer;
+            list-style: none;
+            padding: 0.55rem 0.85rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            user-select: none;
+        }
+        .settings-details > summary::-webkit-details-marker { display: none; }
+        .settings-details > summary::before {
+            content: '▸ ';
+            display: inline-block;
+            transition: transform 0.15s;
+        }
+        .settings-details[open] > summary::before { transform: rotate(90deg); }
+        .settings-details-body {
+            padding: 0 0.85rem 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.65rem;
+        }
+        .chat-scroll-area {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+            scroll-behavior: smooth;
+            padding: 0.85rem 1rem;
+        }
+        @media (min-width: 640px) {
+            .chat-scroll-area { padding: 1rem 1.25rem 0.5rem; }
+        }
+        #chatLog {
+            min-height: 0;
+            max-height: none;
+            flex: none;
+            overflow: visible;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+            padding: 0 0 1rem;
+            max-width: 960px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        .chat-composer-bar {
+            flex-shrink: 0;
+            padding: 0.65rem 1rem 0.85rem;
+            border-top: 1px solid var(--border-soft);
+            background: var(--bg-composer);
+            box-shadow: 0 -8px 24px rgba(0,0,0,0.12);
+        }
+        [data-theme="light"] .chat-composer-bar {
+            box-shadow: 0 -4px 20px rgba(15,23,42,0.06);
+        }
+        @media (min-width: 640px) {
+            .chat-composer-bar { padding: 0.75rem 1.25rem 1rem; }
+        }
+        .composer-inner {
+            max-width: 960px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        .composer-box {
+            border-radius: 18px;
+            border: 1px solid var(--border-soft);
+            background: var(--bg-input);
+            padding: 0.65rem 0.75rem 0.55rem;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+        [data-theme="dark"] .composer-box {
+            box-shadow: 0 2px 16px rgba(0,0,0,0.2);
+        }
+        .composer-textarea {
+            width: 100%;
+            border: none;
+            background: transparent;
+            color: var(--text-primary);
+            resize: none;
+            min-height: 52px;
+            max-height: 160px;
+            font-size: 0.9375rem;
+            line-height: 1.55;
+            padding: 0.25rem 0.35rem;
+            outline: none;
+        }
+        .composer-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            margin-top: 0.35rem;
+            padding-top: 0.35rem;
+            border-top: 1px solid var(--border-soft);
+        }
+        .composer-actions-left {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            flex-wrap: wrap;
+        }
+        .composer-icon-btn {
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            border-radius: 10px;
+            padding: 0.4rem 0.55rem;
+            font-size: 0.8125rem;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .composer-icon-btn:hover {
+            background: var(--bg-ghost-hover);
+            color: var(--text-primary);
+        }
+        .composer-send-btn {
+            border: none;
+            border-radius: 12px;
+            padding: 0.5rem 1.15rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+            box-shadow: 0 4px 14px rgba(14,165,233,0.3);
+            cursor: pointer;
+        }
+        .composer-send-btn:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        .composer-stop-btn {
+            border: none;
+            border-radius: 12px;
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #fff;
+            background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%);
+            cursor: pointer;
+        }
+        .chat-status-bar {
+            max-width: 960px;
+            margin: 0.45rem auto 0;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
         }
         .hint-strip {
             border-left: 3px solid #38bdf8;
@@ -50,48 +364,41 @@
         }
         .feature-pill {
             border-radius: 14px;
-            border: 1px solid rgba(148,163,184,0.12);
-            background: rgba(15,23,42,0.55);
+            border: 1px solid var(--border-soft);
+            background: var(--bg-feature);
             transition: transform 0.2s ease, border-color 0.2s ease;
         }
+        .glass-panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-panel), inset 0 1px 0 rgba(255,255,255,0.05);
+            backdrop-filter: blur(14px);
+        }
+        [data-theme="light"] .text-white { color: var(--text-heading) !important; }
+        [data-theme="light"] .text-slate-200 { color: var(--text-primary) !important; }
+        [data-theme="light"] .text-slate-300 { color: var(--text-secondary) !important; }
+        [data-theme="light"] .text-slate-400 { color: var(--text-muted) !important; }
+        [data-theme="light"] .text-slate-500 { color: var(--text-muted) !important; }
+        [data-theme="light"] .text-sky-200 { color: #0369a1 !important; }
+        [data-theme="light"] .text-emerald-200 { color: #047857 !important; }
+        [data-theme="light"] .border-slate-700\/40 { border-color: rgba(148,163,184,0.28) !important; }
         .feature-pill:hover {
             transform: translateY(-2px);
             border-color: rgba(56,189,248,0.25);
         }
-        #chatLog {
-            min-height: 320px;
-            max-height: min(70vh, 780px);
-            overflow-y: auto;
-            scroll-behavior: smooth;
-            border-radius: 20px;
-            border: 1px solid rgba(148,163,184,0.1);
-            background:
-                radial-gradient(600px 200px at 50% 0%, rgba(56,189,248,0.06), transparent),
-                linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(10,15,28,0.92) 100%);
-            padding: 1.25rem 1.35rem 1.5rem;
-        }
-        @media (min-width: 1280px) {
-            #chatLog { min-height: 420px; max-height: min(74vh, 820px); }
-        }
-        #chatLog::-webkit-scrollbar { width: 8px; }
-        #chatLog::-webkit-scrollbar-track { background: transparent; }
-        #chatLog::-webkit-scrollbar-thumb {
-            background: rgba(100,116,139,0.35);
-            border-radius: 99px;
-        }
-        .bubble-row { display: flex; margin-bottom: 0.85rem; }
+        .bubble-row { display: flex; margin-bottom: 0.95rem; }
         .bubble-row.user { justify-content: flex-end; }
         .bubble-row.assistant { justify-content: flex-start; }
         .bubble {
-            max-width: min(92%, 820px);
+            max-width: min(96%, 980px);
             border-radius: 20px;
-            padding: 0.85rem 1.15rem 1rem;
-            font-size: 0.9375rem;
-            line-height: 1.65;
+            padding: 0.9rem 1.2rem 1.05rem;
+            font-size: 0.975rem;
+            line-height: 1.68;
             word-break: break-word;
         }
         @media (min-width: 640px) {
-            .bubble { font-size: 1rem; padding: 1rem 1.25rem 1.1rem; }
+            .bubble { font-size: 1.025rem; padding: 1.05rem 1.35rem 1.15rem; max-width: min(96%, 1080px); }
         }
         .bubble.user {
             background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
@@ -100,11 +407,14 @@
             box-shadow: 0 8px 24px rgba(37,99,235,0.25);
         }
         .bubble.assistant {
-            background: rgba(30,41,59,0.95);
-            color: #e2e8f0;
-            border: 1px solid rgba(148,163,184,0.12);
+            background: var(--bg-bubble-assistant);
+            color: var(--text-primary);
+            border: 1px solid var(--border-soft);
             border-bottom-left-radius: 6px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        }
+        [data-theme="light"] .bubble.assistant {
+            box-shadow: 0 4px 14px rgba(15,23,42,0.06);
         }
         .bubble.pending-reply {
             border-style: dashed;
@@ -167,6 +477,87 @@
         .reasoning-panel.is-collapsed {
             display: none;
         }
+        .task-harness-panel {
+            margin-top: 0.65rem;
+            margin-bottom: 0.35rem;
+            padding: 0.75rem 0.9rem;
+            border-radius: 12px;
+            border: 1px solid rgba(139,92,246,0.35);
+            background: linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(15,23,42,0.55) 100%);
+            font-size: 0.8125rem;
+            line-height: 1.55;
+        }
+        .task-harness-panel.is-disabled {
+            border-color: rgba(100,116,139,0.35);
+            background: rgba(15,23,42,0.45);
+            opacity: 0.85;
+        }
+        .task-harness-title {
+            font-weight: 700;
+            color: #c4b5fd;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .task-harness-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.45rem;
+        }
+        @media (min-width: 640px) {
+            .task-harness-grid { grid-template-columns: 1fr 1fr; }
+        }
+        .task-harness-field {
+            padding: 0.4rem 0.55rem;
+            border-radius: 8px;
+            background: rgba(15,23,42,0.45);
+            border: 1px solid rgba(148,163,184,0.15);
+        }
+        .task-harness-field.full-width {
+            grid-column: 1 / -1;
+        }
+        .task-harness-label {
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #94a3b8;
+            margin-bottom: 0.15rem;
+        }
+        .task-harness-value {
+            color: #e2e8f0;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+        .task-harness-badge {
+            display: inline-block;
+            padding: 0.1rem 0.45rem;
+            border-radius: 999px;
+            font-size: 0.6875rem;
+            font-weight: 600;
+        }
+        .task-harness-badge.on {
+            background: rgba(16,185,129,0.2);
+            color: #6ee7b7;
+        }
+        .task-harness-badge.off {
+            background: rgba(100,116,139,0.25);
+            color: #cbd5e1;
+        }
+        .task-harness-plan-list {
+            margin: 0.25rem 0 0;
+            padding-left: 1.1rem;
+        }
+        .task-harness-plan-list li {
+            margin: 0.15rem 0;
+        }
+        .task-harness-plan-list li.is-current {
+            color: #fcd34d;
+            font-weight: 600;
+        }
+        .task-harness-plan-list li.is-done {
+            color: #86efac;
+        }
         .reasoning-fold {
             margin-bottom: 0.65rem;
         }
@@ -216,10 +607,10 @@
         .reason-step.status { border-color: rgba(148,163,184,0.2); }
         .reason-step.status .reason-phase { color: #94a3b8; }
         .reason-step-body {
-            color: #cbd5e1;
+            color: var(--text-secondary);
             white-space: pre-wrap;
             word-break: break-word;
-            max-height: 220px;
+            max-height: 280px;
             overflow-y: auto;
         }
         .bubble-label {
@@ -255,26 +646,15 @@
             display: flex;
             align-items: flex-end;
             gap: 10px;
-            max-width: min(96%, 920px);
+            max-width: min(98%, 1120px);
         }
         .bubble-with-avatar.user { flex-direction: row-reverse; margin-left: auto; }
         .bubble-with-avatar.assistant { margin-right: auto; }
         .composer-wrap {
             border-radius: 18px;
-            border: 1px solid rgba(148,163,184,0.12);
-            background: rgba(15,23,42,0.72);
-        }
-        .btn-send {
-            background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
-            box-shadow: 0 4px 14px rgba(14,165,233,0.35);
-        }
-        .btn-send:hover:not(:disabled) {
-            filter: brightness(1.06);
-        }
-        .btn-send:disabled {
-            opacity: 0.55;
-            cursor: not-allowed;
-            box-shadow: none;
+            border: 1px solid var(--border-soft);
+            background: var(--bg-composer);
+            flex-shrink: 0;
         }
         .btn-stop {
             background: linear-gradient(135deg, #dc2626 0%, #ea580c 100%);
@@ -285,16 +665,16 @@
             filter: brightness(1.06);
         }
         .btn-ghost {
-            border: 1px solid rgba(148,163,184,0.2);
-            background: rgba(30,41,59,0.5);
+            border: 1px solid var(--border-soft);
+            background: var(--bg-ghost);
         }
         .btn-ghost:hover:not(:disabled) {
-            background: rgba(51,65,85,0.55);
+            background: var(--bg-ghost-hover);
         }
         .input-dark {
-            background: rgba(15,23,42,0.8);
-            border: 1px solid rgba(148,163,184,0.15);
-            color: #f1f5f9;
+            background: var(--bg-input);
+            border: 1px solid var(--border-soft);
+            color: var(--text-primary);
         }
         .input-dark:focus {
             outline: none;
@@ -314,8 +694,8 @@
             from { opacity: 0; transform: translate(12px, -8px); }
             to { opacity: 1; transform: translate(0, 0); }
         }
-        #sessionAsideList { max-height: 220px; overflow-y: auto; }
-        #sessionAsideList::-webkit-scrollbar { width: 6px; }
+        #sessionAsideList { }
+        #sessionAsideList::-webkit-scrollbar { width: 5px; }
         #sessionAsideList::-webkit-scrollbar-thumb {
             background: rgba(100,116,139,0.35);
             border-radius: 99px;
@@ -363,200 +743,224 @@
             text-align: left;
         }
         .mcp-html-inner th { background: rgba(30,41,59,0.9); color: #e2e8f0; }
+        [data-theme="light"] .mcp-html-inner th { background: #e2e8f0; color: #0f172a; }
+        .theme-toggle-btn {
+            border: 1px solid var(--border-soft);
+            background: var(--bg-ghost);
+            color: var(--text-secondary);
+            border-radius: 12px;
+            padding: 0.5rem 0.85rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s ease, color 0.15s ease;
+        }
+        .theme-toggle-btn:hover {
+            background: var(--bg-ghost-hover);
+            color: var(--text-primary);
+        }
+        .hitl-status-banner {
+            border-radius: 12px;
+            padding: 0.55rem 0.85rem;
+            font-size: 0.8125rem;
+            line-height: 1.5;
+            border: 1px solid transparent;
+        }
+        .hitl-status-banner.ok {
+            border-color: rgba(16,185,129,0.35);
+            background: rgba(16,185,129,0.1);
+            color: #6ee7b7;
+        }
+        [data-theme="light"] .hitl-status-banner.ok {
+            color: #047857;
+            background: rgba(16,185,129,0.08);
+        }
+        .hitl-status-banner.warn {
+            border-color: rgba(251,191,36,0.4);
+            background: rgba(251,191,36,0.1);
+            color: #fcd34d;
+        }
+        [data-theme="light"] .hitl-status-banner.warn {
+            color: #b45309;
+            background: rgba(251,191,36,0.12);
+        }
+        .top-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .chat-scroll-area::-webkit-scrollbar { width: 8px; }
+        .chat-scroll-area::-webkit-scrollbar-thumb {
+            background: rgba(100,116,139,0.35);
+            border-radius: 99px;
+        }
+        @media (max-width: 1023px) {
+            .app-layout { flex-direction: column; }
+            .sidebar-panel {
+                width: 100%;
+                height: auto;
+                max-height: 38vh;
+                flex-shrink: 0;
+                border-right: none;
+                border-bottom: 1px solid var(--border-soft);
+            }
+            .chat-main-panel {
+                flex: 1;
+                min-height: 0;
+            }
+        }
     </style>
 </head>
 <body class="text-slate-200 antialiased">
-    <div class="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 xl:px-14 py-8 sm:py-10 lg:py-12">
-        <div class="flex flex-col xl:flex-row xl:items-start gap-8 lg:gap-10 xl:gap-12">
-            <!-- 侧栏：品牌 + 能力说明（大屏更宽布局） -->
-            <aside class="w-full xl:w-[min(100%,380px)] xl:shrink-0 space-y-6">
-                <div class="text-center xl:text-left">
-                    <div class="inline-flex xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/70 border border-slate-600/35 text-xs text-slate-400 mb-4">
-                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Redis 记忆 · 可选 RAG / GraphRAG
+    <div class="app-layout">
+        <!-- 左侧边栏：固定宽度，内容完整展示 -->
+        <aside class="sidebar-panel">
+            <div class="sidebar-brand">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-slate-800/70 border border-slate-600/35 text-[11px] text-slate-400">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                        Redis · RAG
                     </div>
-                    <h1 class="text-3xl sm:text-4xl lg:text-[2.75rem] font-bold text-white tracking-tight leading-tight">
-                        AI 连续对话
-                    </h1>
-                    <p class="mt-3 text-slate-400 text-sm sm:text-base leading-relaxed max-w-lg xl:max-w-none">
-                        左侧可选最近会话；主区下拉同步切换。勾选「工具调试」可查看本轮 MCP 原始返回，区分模型选错工具与底层失败。
+                    <button type="button" id="themeToggleBtn" class="theme-toggle-btn" onclick="toggleTheme()" title="切换亮色 / 暗色">
+                        <i class="fa-solid fa-moon" id="themeToggleIcon"></i>
+                    </button>
+                </div>
+                <h1 class="text-xl font-bold text-white tracking-tight">AI 连续对话</h1>
+                <p class="mt-1 text-slate-500 text-xs leading-relaxed">左侧切换会话；发邮件/微信需确认后执行</p>
+            </div>
+
+            <div class="sidebar-sessions-block glass-panel rounded-xl p-3">
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <p class="font-semibold text-emerald-200 text-xs flex items-center gap-1.5">
+                        <i class="fa-solid fa-list-ul text-emerald-400"></i>最近会话
                     </p>
-                </div>
-                <div class="glass-panel rounded-2xl p-4 sm:p-5">
-                    <div class="flex items-center justify-between gap-2 mb-3">
-                        <p class="font-semibold text-emerald-200 text-sm flex items-center gap-2">
-                            <i class="fa-solid fa-list-ul text-emerald-400"></i>
-                            最近会话
-                        </p>
-                        <div class="flex gap-1.5 shrink-0">
-                            <button type="button" onclick="createNewSession()" class="text-[11px] px-2.5 py-1.5 rounded-lg bg-slate-700/80 hover:bg-slate-600/90 text-slate-200 border border-slate-600/40">新会话</button>
-                            <button type="button" onclick="loadSessions()" class="text-[11px] px-2.5 py-1.5 rounded-lg btn-ghost text-slate-300" title="刷新列表"><i class="fa-solid fa-rotate"></i></button>
-                        </div>
-                    </div>
-                    <ul id="sessionAsideList" class="text-[13px] text-slate-300 space-y-0.5"></ul>
-                    <p id="sessionAsideEmpty" class="text-xs text-slate-500 py-2 hidden">暂无记录，发一条消息后会出现在此。</p>
-                </div>
-                <div class="glass-panel rounded-2xl p-5 sm:p-6">
-                    <p class="font-semibold text-sky-200 mb-4 flex items-center gap-2 text-sm sm:text-base">
-                        <i class="fa-solid fa-wand-magic-sparkles text-sky-400"></i>
-                        可以帮你完成
-                    </p>
-                    <div class="space-y-3">
-                        <div class="feature-pill p-4 flex gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
-                                <i class="fa-brands fa-weixin text-lg"></i>
-                            </div>
-                            <div>
-                                <p class="font-semibold text-slate-200 text-sm">微信发消息</p>
-                                <p class="text-slate-500 text-xs sm:text-sm mt-1 leading-relaxed">用自然语言说明收件人昵称与内容（需本机微信已登录且 MCP 可用）。</p>
-                            </div>
-                        </div>
-                        <div class="feature-pill p-4 flex gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0">
-                                <i class="fa-solid fa-envelope text-lg"></i>
-                            </div>
-                            <div>
-                                <p class="font-semibold text-slate-200 text-sm">邮件发送</p>
-                                <p class="text-slate-500 text-xs sm:text-sm mt-1 leading-relaxed">说明收件邮箱与正文（需 MCP 邮箱配置正确）。</p>
-                            </div>
-                        </div>
-                        <div class="feature-pill p-4 flex gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0">
-                                <i class="fa-solid fa-book-open text-lg"></i>
-                            </div>
-                            <div>
-                                <p class="font-semibold text-slate-200 text-sm">知识库检索</p>
-                                <p class="text-slate-500 text-xs sm:text-sm mt-1 leading-relaxed">上传前可选择 <strong class="text-slate-400 font-normal">普通 RAG</strong>（向量分块）或 <strong class="text-slate-400 font-normal">GraphRAG</strong>（Neo4j 图 + 向量混合检索）。</p>
-                            </div>
-                        </div>
-                        <div class="feature-pill p-4 flex gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-violet-500/15 text-violet-400 flex items-center justify-center shrink-0">
-                                <i class="fa-solid fa-database text-lg"></i>
-                            </div>
-                            <div>
-                                <p class="font-semibold text-slate-200 text-sm">上下文记忆</p>
-                                <p class="text-slate-500 text-xs sm:text-sm mt-1 leading-relaxed">同一「会话 ID」下多轮对话会串联，适合长任务与跟进追问。</p>
-                            </div>
-                        </div>
-                        <div class="feature-pill p-4 flex gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
-                                <i class="fa-solid fa-globe text-lg"></i>
-                            </div>
-                            <div>
-                                <p class="font-semibold text-slate-200 text-sm">联网搜索</p>
-                                <p class="text-slate-500 text-xs sm:text-sm mt-1 leading-relaxed">MCP 工具 <code class="text-slate-400">web_search</code>（Tavily），需在运行 <code class="text-slate-400">mcp_server</code> 的环境配置 <code class="text-slate-400">TAVILY_API_KEY</code>。</p>
-                            </div>
-                        </div>
-                        <div class="feature-pill p-4 flex gap-3">
-                            <div class="w-10 h-10 rounded-xl bg-lime-500/15 text-lime-400 flex items-center justify-center shrink-0">
-                                <i class="fa-solid fa-file-excel text-lg"></i>
-                            </div>
-                            <div>
-                                <p class="font-semibold text-slate-200 text-sm">表格与 Excel</p>
-                                <p class="text-slate-500 text-xs sm:text-sm mt-1 leading-relaxed"><code class="text-slate-400">format_pretty_table</code> 美化表格；<code class="text-slate-400">export_to_excel</code> 导出到 <code class="text-slate-400">exports/</code> 目录。</p>
-                            </div>
-                        </div>
+                    <div class="flex gap-1 shrink-0">
+                        <button type="button" onclick="createNewSession()" class="text-[10px] px-2 py-1 rounded-md bg-slate-700/80 hover:bg-slate-600/90 text-slate-200 border border-slate-600/40">新会话</button>
+                        <button type="button" onclick="loadSessions()" class="text-[10px] px-2 py-1 rounded-md btn-ghost text-slate-300" title="刷新"><i class="fa-solid fa-rotate"></i></button>
                     </div>
                 </div>
-            </aside>
+                <ul id="sessionAsideList" class="text-[12px] text-slate-300 space-y-0.5"></ul>
+                <p id="sessionAsideEmpty" class="text-[11px] text-slate-500 py-1 hidden">暂无记录</p>
+            </div>
 
-            <!-- 主聊天区：占满剩余宽度 -->
-            <main class="flex-1 min-w-0 glass-panel rounded-2xl sm:rounded-3xl p-5 sm:p-7 lg:p-8">
-                <div class="space-y-4 mb-6">
-                    <div class="flex flex-col sm:flex-row gap-3 sm:items-end">
-                        <div class="flex-1 min-w-0">
-                            <label for="sessionNavSelect" class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">切换会话（与侧栏同步）</label>
-                            <select id="sessionNavSelect" class="input-dark w-full rounded-xl px-4 py-3 text-sm sm:text-base">
-                                <option value="">加载中…</option>
-                            </select>
-                        </div>
-                        <div class="flex flex-wrap gap-2 shrink-0">
-                            <button type="button" onclick="createNewSession()" class="btn-ghost rounded-xl px-4 py-3 text-sm text-slate-200">新会话</button>
-                            <button type="button" onclick="renameCurrentSession()" class="btn-ghost rounded-xl px-4 py-3 text-sm text-slate-200">重命名</button>
-                            <button type="button" onclick="deleteCurrentSession()" class="rounded-xl px-4 py-3 text-sm text-rose-200 border border-rose-500/35 bg-rose-950/35">删当前</button>
-                        </div>
+            <div class="sidebar-features-block">
+                <p class="font-semibold text-sky-200 mb-2 flex items-center gap-1.5 text-xs shrink-0">
+                    <i class="fa-solid fa-wand-magic-sparkles text-sky-400"></i>可以帮你完成
+                </p>
+                <div class="sidebar-features-scroll space-y-2">
+                    <div class="feature-pill-compact">
+                        <div class="feat-icon bg-emerald-500/15 text-emerald-400"><i class="fa-brands fa-weixin"></i></div>
+                        <div><p class="feat-title">微信发消息</p><p class="feat-desc">自然语言说明收件人与内容，MCP + 本机微信</p></div>
                     </div>
-                    <label class="flex items-start gap-2.5 text-xs sm:text-sm text-slate-400 cursor-pointer select-none max-w-3xl">
-                        <input type="checkbox" id="cbShowReasoning" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-violet-500 focus:ring-violet-500/40" checked>
-                        <span>展示 Agent 推理过程（<strong class="text-slate-300 font-normal">Thought → Action → Observation</strong>，每条回复可收起/展开；关闭则仅显示最终回答）</span>
-                    </label>
-                    <label class="flex items-start gap-2.5 text-xs sm:text-sm text-slate-400 cursor-pointer select-none max-w-3xl">
-                        <input type="checkbox" id="cbReasoningExpanded" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-violet-500 focus:ring-violet-500/40">
-                        <span>推理过程默认展开（不勾选则默认收起，点击「Agent 推理过程 · N 步」可展开）</span>
-                    </label>
-                    <label class="flex items-start gap-2.5 text-xs sm:text-sm text-slate-400 cursor-pointer select-none max-w-3xl">
-                        <input type="checkbox" id="cbToolDebug" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500/40">
-                        <span>显示本轮 MCP 工具调用详情（是否调用 <code class="text-slate-500">send_wechat_message</code> / <code class="text-slate-500">send_email</code> 及原始返回，便于判断是模型选错工具还是底层失败）</span>
-                    </label>
-                    <div class="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 pt-1">
-                        <span class="text-xs font-semibold uppercase tracking-wider text-slate-500 shrink-0">知识库模式</span>
-                        <div class="flex flex-wrap gap-4 text-sm text-slate-300" role="radiogroup" aria-label="知识库模式">
-                            <label class="flex items-center gap-2 cursor-pointer select-none">
-                                <input type="radio" name="ragMode" value="rag" class="text-sky-500 focus:ring-sky-500/40" checked>
-                                <span>普通 RAG <span class="text-slate-500 text-xs">（Milvus 向量分块，速度快）</span></span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer select-none">
-                                <input type="radio" name="ragMode" value="graphrag" class="text-emerald-500 focus:ring-emerald-500/40">
-                                <span>GraphRAG <span class="text-slate-500 text-xs">（Neo4j 单库最新图谱 + Milvus 向量；历史文档靠 Milvus）</span></span>
-                            </label>
-                        </div>
+                    <div class="feature-pill-compact">
+                        <div class="feat-icon bg-sky-500/15 text-sky-400"><i class="fa-solid fa-envelope"></i></div>
+                        <div><p class="feat-title">邮件发送</p><p class="feat-desc">执行前需点「确认执行」（Human-in-the-Loop）</p></div>
                     </div>
-                    <div class="flex flex-col lg:flex-row lg:items-end gap-3 pt-1 border-t border-slate-700/40">
-                        <div class="flex-1 min-w-0">
-                            <label for="chatSessionId" class="flex items-center justify-between gap-2 text-[11px] font-medium text-slate-500 mb-1.5">
-                                <span>高级：手动编辑会话 ID</span>
-                            </label>
-                            <input id="chatSessionId" class="input-dark w-full rounded-xl px-3 py-2.5 text-sm" placeholder="与下拉或侧栏切换后保持一致">
-                        </div>
-                        <div class="flex gap-2 shrink-0">
-                            <button type="button" id="chatRefreshBtn" onclick="loadChatHistory()" class="btn-ghost rounded-xl px-5 py-2.5 text-sm text-slate-200 font-medium">
-                                <i class="fa-solid fa-rotate mr-2 opacity-80"></i>刷新
-                            </button>
-                            <button type="button" id="chatClearBtn" onclick="clearChatMemory()" class="rounded-xl px-5 py-2.5 text-sm font-medium text-rose-200 border border-rose-500/35 bg-rose-950/35 hover:bg-rose-950/55 transition-colors">
-                                <i class="fa-solid fa-trash-can mr-2"></i>清空记忆
-                            </button>
+                    <div class="feature-pill-compact">
+                        <div class="feat-icon bg-rose-500/15 text-rose-400"><i class="fa-solid fa-book-open"></i></div>
+                        <div><p class="feat-title">知识库检索</p><p class="feat-desc">普通 RAG（Milvus）或 GraphRAG（Neo4j + 向量）</p></div>
+                    </div>
+                    <div class="feature-pill-compact">
+                        <div class="feat-icon bg-violet-500/15 text-violet-400"><i class="fa-solid fa-database"></i></div>
+                        <div><p class="feat-title">上下文记忆</p><p class="feat-desc">同一会话 ID 下多轮对话串联</p></div>
+                    </div>
+                    <div class="feature-pill-compact">
+                        <div class="feat-icon bg-amber-500/15 text-amber-400"><i class="fa-solid fa-globe"></i></div>
+                        <div><p class="feat-title">联网搜索</p><p class="feat-desc">web_search（Tavily），需配置 TAVILY_API_KEY</p></div>
+                    </div>
+                    <div class="feature-pill-compact">
+                        <div class="feat-icon bg-lime-500/15 text-lime-400"><i class="fa-solid fa-file-excel"></i></div>
+                        <div><p class="feat-title">表格与 Excel</p><p class="feat-desc">format_pretty_table / export_to_excel</p></div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主聊天区：消息可滚动，输入框固定底部 -->
+        <main class="chat-main-panel">
+            <div class="chat-toolbar">
+                <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                    <div class="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-2">
+                        <select id="sessionNavSelect" class="input-dark flex-1 rounded-xl px-3 py-2 text-sm">
+                            <option value="">加载中…</option>
+                        </select>
+                        <div class="flex flex-wrap gap-1.5 shrink-0">
+                            <button type="button" onclick="createNewSession()" class="btn-ghost rounded-lg px-3 py-2 text-xs text-slate-200">新会话</button>
+                            <button type="button" id="chatRefreshBtn" onclick="loadChatHistory()" class="btn-ghost rounded-lg px-3 py-2 text-xs text-slate-200"><i class="fa-solid fa-rotate mr-1"></i>刷新</button>
+                            <button type="button" id="chatClearBtn" onclick="clearChatMemory()" class="rounded-lg px-3 py-2 text-xs text-rose-200 border border-rose-500/35 bg-rose-950/35">清空</button>
                         </div>
                     </div>
                 </div>
+                <div id="hitlStatusBanner" class="hitl-status-banner ok mt-2 hidden">
+                    <i class="fa-solid fa-user-check mr-1.5"></i><span id="hitlStatusText">Human-in-the-Loop 已启用</span>
+                </div>
+            </div>
 
-                <div id="chatLog" class="mb-5 text-sm sm:text-base"></div>
+            <details class="settings-details mt-2 mb-1">
+                <summary>对话设置与高级选项</summary>
+                <div class="settings-details-body">
+                    <label class="flex items-start gap-2 text-xs text-slate-400 cursor-pointer select-none">
+                        <input type="checkbox" id="cbShowReasoning" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-violet-500" checked>
+                        <span>展示 Agent 推理过程（Thought → Action → Observation）</span>
+                    </label>
+                    <label class="flex items-start gap-2 text-xs text-slate-400 cursor-pointer select-none">
+                        <input type="checkbox" id="cbReasoningExpanded" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-violet-500">
+                        <span>推理过程默认展开</span>
+                    </label>
+                    <label class="flex items-start gap-2 text-xs text-slate-400 cursor-pointer select-none">
+                        <input type="checkbox" id="cbToolDebug" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-sky-500">
+                        <span>显示 MCP 工具调用详情</span>
+                    </label>
+                    <div class="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                        <span class="text-slate-500 font-semibold">知识库</span>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="ragMode" value="rag" checked> 普通 RAG</label>
+                        <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="ragMode" value="graphrag"> GraphRAG</label>
+                    </div>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <input id="chatSessionId" class="input-dark flex-1 rounded-lg px-3 py-2 text-xs" placeholder="会话 ID（高级）">
+                        <button type="button" onclick="renameCurrentSession()" class="btn-ghost rounded-lg px-3 py-2 text-xs text-slate-200 shrink-0">重命名</button>
+                        <button type="button" onclick="deleteCurrentSession()" class="rounded-lg px-3 py-2 text-xs text-rose-200 border border-rose-500/35 bg-rose-950/35 shrink-0">删当前</button>
+                    </div>
+                </div>
+            </details>
 
-                <div id="toolDebugPanel" class="hidden mb-5 rounded-2xl border border-amber-500/25 bg-slate-950/50 p-4 text-slate-300">
+            <div class="chat-scroll-area" id="chatScrollArea">
+                <div id="chatLog" class="text-sm sm:text-base"></div>
+                <div id="toolDebugPanel" class="hidden mb-4 rounded-2xl border border-amber-500/25 bg-slate-950/50 p-4 text-slate-300">
                     <p class="text-xs font-semibold text-amber-200/90 mb-2 flex items-center gap-2">
                         <i class="fa-solid fa-microscope"></i> 本轮 MCP 工具调试
                     </p>
                     <p id="toolDebugSummary" class="text-xs text-slate-400 mb-3"></p>
-                    <pre id="toolDebugPre" class="text-[11px] leading-relaxed whitespace-pre-wrap break-words max-h-80 overflow-y-auto rounded-lg bg-slate-900/80 p-3 border border-slate-700/50"></pre>
+                    <pre id="toolDebugPre" class="text-[11px] leading-relaxed whitespace-pre-wrap break-words max-h-60 overflow-y-auto rounded-lg bg-slate-900/80 p-3 border border-slate-700/50"></pre>
                 </div>
+            </div>
 
-                <div class="composer-wrap p-2 sm:p-3">
-                    <div id="pendingUploads" class="flex flex-wrap gap-2 mb-2 px-1"></div>
-                    <div class="flex flex-col lg:flex-row gap-3 lg:items-end">
-                        <textarea id="chatInput" rows="3" class="input-dark flex-1 rounded-xl px-4 py-3.5 text-sm sm:text-base resize-none min-h-[88px] lg:min-h-[100px]" placeholder="输入消息，描述越清楚，发微信 / 邮件时越容易一次成功…"></textarea>
-                        <div class="flex flex-col gap-2 shrink-0">
-                            <input type="file" id="fileUploadInput" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.bmp,.webp,.tif,.tiff" multiple>
-                            <button type="button" id="chatUploadBtn" class="btn-ghost rounded-xl px-5 py-3 text-sm text-slate-200 font-medium" title="上传文档或图片">
-                                <i class="fa-solid fa-paperclip mr-2"></i>上传
-                            </button>
-                            <button type="button" id="chatSendBtn" onclick="sendChatMessage()" class="btn-send rounded-xl px-8 py-3.5 text-sm sm:text-base font-semibold text-white min-w-[120px]">
-                                <i class="fa-solid fa-paper-plane mr-2"></i>发送
-                            </button>
-                            <button type="button" id="chatStopBtn" onclick="stopChatExecution()" class="btn-stop hidden rounded-xl px-6 py-3.5 text-sm sm:text-base font-semibold min-w-[120px]" title="立即停止 AI 推理与工具执行">
-                                <i class="fa-solid fa-stop mr-2"></i>停止
-                            </button>
+            <div class="chat-composer-bar">
+                <div class="composer-inner">
+                    <div id="pendingUploads" class="flex flex-wrap gap-2 mb-2"></div>
+                    <div class="composer-box">
+                        <textarea id="chatInput" rows="2" class="composer-textarea" placeholder="发消息… 发微信 / 邮件时会先弹出确认卡片"></textarea>
+                        <div class="composer-actions">
+                            <div class="composer-actions-left">
+                                <input type="file" id="fileUploadInput" class="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.bmp,.webp,.tif,.tiff" multiple>
+                                <button type="button" id="chatUploadBtn" class="composer-icon-btn" title="上传文档或图片"><i class="fa-solid fa-paperclip mr-1"></i>上传</button>
+                                <span class="text-[10px] text-slate-500 hidden sm:inline"><span class="kbd-hint">Enter</span> 发送 · <span class="kbd-hint">Shift+Enter</span> 换行</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button type="button" id="chatStopBtn" onclick="stopChatExecution()" class="composer-stop-btn hidden" title="停止"><i class="fa-solid fa-stop mr-1"></i>停止</button>
+                                <button type="button" id="chatSendBtn" onclick="sendChatMessage()" class="composer-send-btn"><i class="fa-solid fa-paper-plane mr-1"></i>发送</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 px-1 text-[11px] sm:text-xs text-slate-500">
-                        <span><span class="kbd-hint">Enter</span> 发送</span>
-                        <span><span class="kbd-hint">Shift</span> + <span class="kbd-hint">Enter</span> 换行</span>
-                        <span>等待 AI 回复时不可连续发送；可点「停止」立即打断</span>
-                    </div>
+                    <p id="chatStatus" class="chat-status-bar">
+                        <i class="fa-solid fa-circle-info opacity-60"></i><span id="chatStatusText"></span>
+                    </p>
                 </div>
-                <p id="chatStatus" class="text-xs sm:text-sm text-slate-500 mt-4 px-1 flex items-center gap-2">
-                    <i class="fa-solid fa-circle-info text-slate-600"></i><span id="chatStatusText"></span>
-                </p>
-            </main>
-        </div>
+            </div>
+        </main>
     </div>
 
     <script>
@@ -566,18 +970,71 @@
         let chatAbortController = null;
         let chatStopRequested = false;
         let currentReasoningSteps = [];
+        let currentTaskHarness = null;
         const RAG_MODE_STORAGE_KEY = 'aiChatRagMode';
         const REASONING_STORAGE_KEY = 'aiChatShowReasoning';
         const REASONING_EXPANDED_KEY = 'aiChatReasoningExpanded';
         const REASONING_TRACE_KEY = 'aiChatReasoningTraces';
+        const THEME_STORAGE_KEY = 'aiChatTheme';
 
         window.onload = function () {
+            initThemeToggle();
             initRagModeSelector();
             initReasoningCheckbox();
             initReasoningExpandedCheckbox();
+            loadServiceStatus();
             loadChatHistory();
             loadSessions();
         };
+
+        function initThemeToggle() {
+            syncThemeToggleUi();
+        }
+
+        function currentTheme() {
+            return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+        }
+
+        function syncThemeToggleUi() {
+            const isLight = currentTheme() === 'light';
+            const icon = document.getElementById('themeToggleIcon');
+            if (icon) icon.className = 'fa-solid fa-' + (isLight ? 'sun' : 'moon');
+        }
+
+        function scrollChatToBottom() {
+            const area = document.getElementById('chatScrollArea');
+            if (area) area.scrollTop = area.scrollHeight;
+        }
+
+        function toggleTheme() {
+            const next = currentTheme() === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem(THEME_STORAGE_KEY, next);
+            syncThemeToggleUi();
+        }
+
+        async function loadServiceStatus() {
+            const banner = document.getElementById('hitlStatusBanner');
+            const textEl = document.getElementById('hitlStatusText');
+            if (!banner || !textEl) return;
+            try {
+                const res = await fetch(apiBase() + '/service/status').then(function (r) { return r.json(); });
+                if (!res || res.code !== 0) return;
+                banner.classList.remove('hidden', 'ok', 'warn');
+                if (res.hitl_available) {
+                    banner.classList.add('ok');
+                    var cp = res.checkpointer === 'postgres' ? 'Postgres' : (res.checkpointer === 'memory' ? '内存' : '');
+                    textEl.textContent = 'Human-in-the-Loop 已启用' + (cp ? '（' + cp + ' checkpoint）' : '') + ' · 发邮件/微信前需您确认';
+                } else {
+                    banner.classList.add('warn');
+                    textEl.textContent = 'Human-in-the-Loop 未启用：敏感操作将直接执行。请重启 app.py 并确保 HITL_ENABLED=1';
+                }
+            } catch (e) {
+                banner.classList.remove('hidden');
+                banner.classList.add('warn');
+                textEl.textContent = '无法读取 HITL 状态';
+            }
+        }
 
         function initReasoningExpandedCheckbox() {
             const cb = document.getElementById('cbReasoningExpanded');
@@ -595,6 +1052,7 @@
 
         function resetReasoningSteps() {
             currentReasoningSteps = [];
+            currentTaskHarness = null;
         }
 
         function recordReasoningStep(ev) {
@@ -726,7 +1184,17 @@
             return panel;
         }
 
-        function onReasoningStreamEvent(panel, ev) {
+        function onReasoningStreamEvent(panel, ev, bubble) {
+            if (ev && ev.type === 'task_harness') {
+                const harnessPanel = ensureTaskHarnessPanel(bubble || (panel ? panel.closest('.bubble') : null));
+                renderTaskHarnessPanel(harnessPanel, ev);
+                setChatStatusLine(
+                    ev.harness_enabled
+                        ? ('Task Harness · 第 ' + ((Number(ev.plan_index) || 0) + 1) + ' 步 · ' + (ev.task_phase_label || ev.task_phase || ''))
+                        : 'Agent 运行中（简单任务，Harness 未启用）'
+                );
+                return;
+            }
             recordReasoningStep(ev);
             if (panel && wantReasoningStream()) {
                 appendOrUpdateReasonStep(panel, ev);
@@ -879,6 +1347,108 @@
             finalizePendingAsAssistant(null, res, currentReasoningSteps.slice());
         }
 
+        function taskPhaseLabel(phase) {
+            if (phase === 'gather') return 'gather · 信息收集';
+            if (phase === 'process') return 'process · 整理加工';
+            if (phase === 'deliver') return 'deliver · 外发交付';
+            return phase || '—';
+        }
+
+        function ensureTaskHarnessPanel(bubble) {
+            if (!bubble) return null;
+            let panel = bubble.querySelector('.task-harness-panel');
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.className = 'task-harness-panel hidden';
+                panel.innerHTML =
+                    '<div class="task-harness-title"><i class="fa-solid fa-list-check"></i> Task Harness 状态</div>' +
+                    '<div class="task-harness-grid"></div>';
+                const reasoningFold = bubble.querySelector('.reasoning-fold');
+                if (reasoningFold) {
+                    bubble.insertBefore(panel, reasoningFold);
+                } else {
+                    const spin = bubble.querySelector('.pending-spin-wrap');
+                    if (spin && spin.nextSibling) {
+                        bubble.insertBefore(panel, spin.nextSibling);
+                    } else {
+                        bubble.appendChild(panel);
+                    }
+                }
+            }
+            return panel;
+        }
+
+        function mergeTaskHarness(prev, next) {
+            if (!next) return prev;
+            if (!prev) return next;
+            const out = Object.assign({}, prev);
+            if (next.user_goal) out.user_goal = next.user_goal;
+            if (next.plan && next.plan.length) out.plan = next.plan.slice();
+            if (next.completed_steps && next.completed_steps.length) {
+                out.completed_steps = next.completed_steps.slice();
+            }
+            if (typeof next.harness_enabled === 'boolean') out.harness_enabled = next.harness_enabled;
+            if (next.plan_index != null && !isNaN(Number(next.plan_index))) {
+                out.plan_index = Number(next.plan_index);
+            }
+            if (next.task_phase) out.task_phase = next.task_phase;
+            if (next.task_phase_label) out.task_phase_label = next.task_phase_label;
+            if (next.current_step) out.current_step = next.current_step;
+            if (next.plan_total != null) out.plan_total = next.plan_total;
+            return out;
+        }
+
+        function renderTaskHarnessPanel(panel, data) {
+            if (!panel || !data) return;
+            currentTaskHarness = mergeTaskHarness(currentTaskHarness, data);
+            data = currentTaskHarness;
+            panel.classList.remove('hidden');
+            panel.classList.toggle('is-disabled', !data.harness_enabled);
+            const grid = panel.querySelector('.task-harness-grid');
+            if (!grid) return;
+
+            const plan = Array.isArray(data.plan) ? data.plan : [];
+            const planIndex = Number(data.plan_index) || 0;
+            const completed = Array.isArray(data.completed_steps) ? data.completed_steps : [];
+
+            let planHtml = '（无分步计划）';
+            if (plan.length) {
+                planHtml = '<ol class="task-harness-plan-list">';
+                plan.forEach(function (step, i) {
+                    let cls = '';
+                    if (i < planIndex) cls = ' class="is-done"';
+                    else if (i === planIndex) cls = ' class="is-current"';
+                    planHtml += '<li' + cls + '>' + escapeHtml(String(step)) + '</li>';
+                });
+                planHtml += '</ol>';
+            }
+
+            const harnessBadge = data.harness_enabled
+                ? '<span class="task-harness-badge on">已启用</span>'
+                : '<span class="task-harness-badge off">未启用（简单任务）</span>';
+
+            grid.innerHTML =
+                '<div class="task-harness-field full-width">' +
+                '<div class="task-harness-label">user_goal · 用户原始目标</div>' +
+                '<div class="task-harness-value">' + escapeHtml(data.user_goal || '—') + '</div></div>' +
+                '<div class="task-harness-field full-width">' +
+                '<div class="task-harness-label">plan · 执行计划（' + plan.length + ' 步）</div>' +
+                '<div class="task-harness-value">' + planHtml + '</div></div>' +
+                '<div class="task-harness-field">' +
+                '<div class="task-harness-label">plan_index · 当前步骤索引</div>' +
+                '<div class="task-harness-value">' + planIndex + ' / ' + Math.max(plan.length - 1, 0) +
+                (data.current_step ? (' · ' + escapeHtml(String(data.current_step))) : '') + '</div></div>' +
+                '<div class="task-harness-field">' +
+                '<div class="task-harness-label">task_phase · 任务阶段</div>' +
+                '<div class="task-harness-value">' + escapeHtml(data.task_phase_label || taskPhaseLabel(data.task_phase)) + '</div></div>' +
+                '<div class="task-harness-field">' +
+                '<div class="task-harness-label">harness_enabled · 复杂任务模式</div>' +
+                '<div class="task-harness-value">' + harnessBadge + '</div></div>' +
+                '<div class="task-harness-field">' +
+                '<div class="task-harness-label">completed_steps · 已完成步骤</div>' +
+                '<div class="task-harness-value">' + (completed.length ? escapeHtml(completed.join('\n')) : '（暂无）') + '</div></div>';
+        }
+
         function reasonPhaseLabel(phase) {
             if (phase === 'thought') return 'Thought · 推理';
             if (phase === 'action') return 'Action · 行动';
@@ -970,6 +1540,7 @@
                 }
             }
             const panel = ensureReasoningPanel(bubble);
+            ensureTaskHarnessPanel(bubble);
             if (!panel.closest('.reasoning-fold')) {
                 wrapReasoningPanelCollapsible(panel, 0);
             }
@@ -1029,7 +1600,7 @@
                 if (attachments && attachments.length) {
                     log.appendChild(buildMcpAttachmentsRow(attachments));
                 }
-                log.scrollTop = log.scrollHeight;
+                scrollChatToBottom();
             }
         }
 
@@ -1218,7 +1789,7 @@
                 }
             });
             wireReasoningFolds(log);
-            log.scrollTop = log.scrollHeight;
+            scrollChatToBottom();
         }
 
         function setChatUiLocked(locked) {
@@ -1241,7 +1812,7 @@
             document.querySelectorAll('#sessionAsideList button').forEach(b => { b.disabled = locked; });
             if (sendBtn) {
                 sendBtn.classList.toggle('hidden', locked);
-                sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>发送';
+                sendBtn.innerHTML = '<i class="fa-solid fa-paper-plane mr-1"></i>发送';
             }
             if (stopBtn) {
                 stopBtn.classList.toggle('hidden', !locked);
@@ -1281,7 +1852,11 @@
                 try { chatAbortController.abort(); } catch (e) { /* ignore */ }
             }
             try {
-                await api('/chat/cancel', { session_id: getSessionId() });
+                const cancelPromise = api('/chat/cancel', { session_id: getSessionId() });
+                await Promise.race([
+                    cancelPromise,
+                    new Promise(function (resolve) { setTimeout(resolve, 3000); })
+                ]);
             } catch (e) { /* ignore */ }
             if (chatStopRequested) {
                 finalizeInterruptedRun(pendingRow, '（执行已由您中断，未写入完整回复）');
@@ -1290,12 +1865,13 @@
 
         function appendChatBubble(role, contentHtmlEscaped) {
             const log = document.getElementById('chatLog');
+            if (!log) return;
             const hint = log.querySelector('.empty-chat-hint');
             if (hint) hint.remove();
             const wrap = document.createElement('div');
             wrap.innerHTML = bubbleHtml(role, contentHtmlEscaped);
             log.appendChild(wrap.firstElementChild);
-            log.scrollTop = log.scrollHeight;
+            scrollChatToBottom();
         }
 
         function setChatStatusLine(msg) {
@@ -1583,8 +2159,7 @@
                     resumeHitl(btn.getAttribute('data-hitl'));
                 });
             });
-            const log = document.getElementById('chatLog');
-            if (log) log.scrollTop = log.scrollHeight;
+            scrollChatToBottom();
         }
 
         async function resumeHitl(action) {
@@ -1620,15 +2195,16 @@
                     resetReasoningSteps();
                     let reasoningPanel = pendingRow ? mountReasoningOnPending(pendingRow) : null;
                     res = normalizeChatResponse(await consumeSseStream(streamUrl, reqBody, function (ev) {
-                        onReasoningStreamEvent(reasoningPanel, ev);
-                        const log = document.getElementById('chatLog');
-                        if (log) log.scrollTop = log.scrollHeight;
+                        onReasoningStreamEvent(reasoningPanel, ev, pendingRow ? pendingRow.querySelector('.bubble') : null);
+                        scrollChatToBottom();
                     }, runSignal));
                 } else {
                     res = normalizeChatResponse(await api('/chat/hitl/resume', reqBody, runSignal));
                 }
             } catch (e) {
                 if (e && e.name === 'AbortError') {
+                    if (chatStopRequested) return;
+                    finalizeInterruptedRun(pendingRow, '（执行已由您中断，未写入完整回复）');
                     return;
                 }
                 res = { code: -1, msg: String(e.message || e) };
@@ -1698,7 +2274,7 @@
                 '<div class="bubble-label">助手</div>' +
                 '<div><i class="fa-solid fa-circle-notch fa-spin mr-2 text-sky-400"></i>正在思考…</div></div></div>';
             log.appendChild(pending);
-            log.scrollTop = log.scrollHeight;
+            scrollChatToBottom();
 
             setChatStatusLine('AI 处理中，请稍候…');
 
@@ -1723,8 +2299,8 @@
                 if (wantReasoningStream()) {
                     let reasoningPanel = mountReasoningOnPending(pending);
                     res = normalizeChatResponse(await consumeSseStream('/chat/message/stream', reqBody, function (ev) {
-                        onReasoningStreamEvent(reasoningPanel, ev);
-                        log.scrollTop = log.scrollHeight;
+                        onReasoningStreamEvent(reasoningPanel, ev, pending.querySelector('.bubble'));
+                        scrollChatToBottom();
                     }, runSignal));
                 } else {
                     res = normalizeChatResponse(await api('/chat/message', reqBody, runSignal));
@@ -1733,6 +2309,8 @@
                 renderPendingUploads();
             } catch (e) {
                 if (e && e.name === 'AbortError') {
+                    if (chatStopRequested) return;
+                    finalizeInterruptedRun(pending, '（执行已由您中断，未写入完整回复）');
                     return;
                 }
                 res = { code: -1, msg: String(e.message || e) };

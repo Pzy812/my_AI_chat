@@ -4,14 +4,29 @@ import time
 from flask import Blueprint, jsonify
 
 import app_mcp.mcp_lifecycle as mcp_lifecycle
+from agent.agent_checkpointer import checkpointer_kind, enabled as checkpointer_ready
+from agent.agent_service import hitl_available
+from config.app_config import AGENT_CHECKPOINT_ENABLED, HITL_ENABLED, POSTGRES_URI
 
 bp = Blueprint("service", __name__)
 
 
-@bp.route("/service/status", methods=["POST"])
+@bp.route("/service/status", methods=["POST", "GET"])
 def service_status():
     running = mcp_lifecycle.tracked_mcp_running() or bool(mcp_lifecycle.mcp_port_pids())
-    return jsonify({"code": 0, "running": running})
+    cp_kind = checkpointer_kind()
+    return jsonify(
+        {
+            "code": 0,
+            "running": running,
+            "hitl_enabled": HITL_ENABLED,
+            "hitl_available": hitl_available(),
+            "checkpointer": cp_kind,
+            "checkpointer_ready": checkpointer_ready(),
+            "postgres_configured": bool(POSTGRES_URI),
+            "agent_checkpoint_enabled": AGENT_CHECKPOINT_ENABLED,
+        }
+    )
 
 
 @bp.route("/service/start", methods=["POST"])

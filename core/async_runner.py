@@ -76,7 +76,18 @@ def cancel_active_run(run_key: str) -> bool:
         future = _active_runs.get(run_key)
     if future is None or future.done():
         return False
-    return future.cancel()
+    cancelled = future.cancel()
+    # cancel() 仅协作式；若 loop 正被同步代码占用，仍尝试唤醒以便尽快处理 CancelledError
+    loop = _loop
+    if loop is not None and loop.is_running():
+        loop.call_soon_threadsafe(lambda: None)
+    return cancelled
+
+
+def schedule_async(coro: Coroutine[Any, Any, Any]) -> None:
+    """在后台 loop 上调度协程，不阻塞 Flask 请求线程。"""
+    loop = ensure_loop()
+    asyncio.run_coroutine_threadsafe(coro, loop)
 
 
 def run_async(
@@ -113,6 +124,12 @@ def iter_sync_from_async_gen(
         try:
             async for item in async_gen:
                 queue.put(("item", item))
+        except asyncio.CancelledError:
+            try:
+                await async_gen.aclose()
+            except Exception:
+                pass
+            raise
         except BaseException as e:
             queue.put(("error", e))
         finally:

@@ -73,14 +73,11 @@ def mcp_port_open() -> bool:
 
 
 async def _fetch_mcp_tool_names() -> set[str]:
-    from mcp import ClientSession
-    from mcp.client.streamable_http import streamable_http_client
+    from app_mcp.mcp_http_client import open_mcp_session
 
-    async with streamable_http_client(MCP_URL) as (r, w, _):
-        async with ClientSession(r, w) as session:
-            await session.initialize()
-            page = await session.list_tools()
-            return {t.name for t in page.tools}
+    async with open_mcp_session() as session:
+        page = await session.list_tools()
+        return {t.name for t in page.tools}
 
 
 _mcp_probe_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mcp-probe")
@@ -166,6 +163,14 @@ def ensure_mcp_server_started(wait_sec: float = 25.0) -> bool:
             return False
         time.sleep(0.35)
     return mcp_port_open()
+
+
+async def ensure_mcp_server_started_async(wait_sec: float = 25.0) -> bool:
+    """异步上下文安全版：避免 sync sleep / 线程阻塞卡住 event loop。"""
+    return await asyncio.get_running_loop().run_in_executor(
+        None, lambda: ensure_mcp_server_started(wait_sec)
+    )
+
 
 def start_mcp_subprocess():
     """启动 MCP 子进程（不等待就绪）。"""
