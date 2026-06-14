@@ -219,6 +219,27 @@ def make_pre_model_hook():
         task_phase = compute_task_phase(
             plan, plan_index, harness_enabled=harness_enabled
         )
+        from agent.task_continue import (
+            deliver_tools_used,
+            sync_deliver_completion_flags,
+            user_goal_requires_deliver,
+        )
+
+        thread_id = _thread_id_from_config(config)
+        sync_deliver_completion_flags(thread_id, messages)
+
+        goal = (_state_get(state, "user_goal") or "").strip()
+        if (
+            harness_enabled
+            and user_goal_requires_deliver(goal)
+            and not deliver_tools_used(messages)
+        ):
+            if plan and plan_index >= len(plan) - 1:
+                task_phase = "deliver"
+            elif plan and infer_phase_from_step(plan[-1]) == "deliver" and plan_index >= len(plan) - 2:
+                task_phase = "deliver"
+            elif not plan and count_tool_rounds(messages) >= 1:
+                task_phase = "deliver"
         tool_rounds = count_tool_rounds(messages)
 
         updated: dict[str, Any] = {
@@ -230,11 +251,16 @@ def make_pre_model_hook():
 
         base = dict(state) if isinstance(state, dict) else {}
         merged = {**base, **updated}
-        thread_id = _thread_id_from_config(config)
         _sync_run_context(thread_id, merged)
 
         trimmed = trim_messages_for_llm(messages)
-        reanchor = SystemMessage(content=build_reanchor_text(merged))
+        reanchor_text = build_reanchor_text(merged)
+        if deliver_tools_used(messages):
+            reanchor_text += (
+                "\n\n【外发已完成】邮件/微信/导出已成功执行。"
+                "请直接向用户总结结果，勿再次调用 send_email、send_wechat_* 或 export_to_excel。"
+            )
+        reanchor = SystemMessage(content=reanchor_text)
 
         # 每 N 轮工具后或 HITL 恢复后强制重锚（首条 Human 之后插入）
         llm_input: list[BaseMessage] = [reanchor]
@@ -303,8 +329,16 @@ def _wrap_tool_phase(tool: BaseTool) -> BaseTool:
     async def _gated_coroutine(**kwargs: Any) -> str:
         from langchain_core.runnables import ensure_config
 
+        from agent.task_continue import (
+            DELIVER_ACTION_TOOLS,
+            deliver_duplicate_block_message,
+            is_deliver_tool_done,
+        )
+
         config = ensure_config()
         thread_id = _thread_id_from_config(config)
+        if name in DELIVER_ACTION_TOOLS and is_deliver_tool_done(thread_id, name):
+            return deliver_duplicate_block_message(name)
         ctx = _run_task_context.get(thread_id, {})
         if not ctx.get("harness_enabled"):
             result = await tool.ainvoke(kwargs)

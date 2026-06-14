@@ -8,6 +8,13 @@ from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.types import interrupt
 
 from agent.hitl_config import HITL_TOOL_LABELS, HITL_TOOL_NAMES, hitl_tool_label
+from agent.task_continue import (
+    DELIVER_ACTION_TOOLS,
+    deliver_duplicate_block_message,
+    is_deliver_success_text,
+    is_deliver_tool_done,
+    mark_deliver_tool_done,
+)
 
 
 def _parse_decision(decision: Any) -> str:
@@ -95,6 +102,15 @@ def _wrap_one(tool: BaseTool) -> BaseTool:
     label = HITL_TOOL_LABELS.get(tool.name, tool.name)
 
     async def _hitl_coroutine(**kwargs: Any) -> str:
+        from langchain_core.runnables import ensure_config
+
+        from agent.harness import _thread_id_from_config
+
+        config = ensure_config()
+        thread_id = _thread_id_from_config(config)
+        if tool.name in DELIVER_ACTION_TOOLS and is_deliver_tool_done(thread_id, tool.name):
+            return deliver_duplicate_block_message(tool.name)
+
         payload = {
             "type": "tool_approval",
             "tool": tool.name,
@@ -105,9 +121,10 @@ def _wrap_one(tool: BaseTool) -> BaseTool:
         if _parse_decision(decision) != "approve":
             return f"⏸️ 用户已取消：{label}（未执行）"
         result = await tool.ainvoke(kwargs)
-        if isinstance(result, str):
-            return result
-        return str(result)
+        text = result if isinstance(result, str) else str(result)
+        if tool.name in DELIVER_ACTION_TOOLS and is_deliver_success_text(text):
+            mark_deliver_tool_done(thread_id, tool.name)
+        return text
 
     return StructuredTool(
         name=tool.name,

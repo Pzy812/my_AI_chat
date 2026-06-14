@@ -1001,9 +1001,28 @@
             if (icon) icon.className = 'fa-solid fa-' + (isLight ? 'sun' : 'moon');
         }
 
-        function scrollChatToBottom() {
+        let chatUserScrolledUp = false;
+        const CHAT_SCROLL_THRESHOLD = 80;
+
+        function bindChatScrollArea() {
             const area = document.getElementById('chatScrollArea');
-            if (area) area.scrollTop = area.scrollHeight;
+            if (!area || area.dataset.scrollBound) return;
+            area.dataset.scrollBound = '1';
+            area.addEventListener('scroll', function () {
+                const dist = area.scrollHeight - area.scrollTop - area.clientHeight;
+                chatUserScrolledUp = dist > CHAT_SCROLL_THRESHOLD;
+            }, { passive: true });
+        }
+
+        function resetChatScrollLock() {
+            chatUserScrolledUp = false;
+        }
+
+        function scrollChatToBottom(force) {
+            const area = document.getElementById('chatScrollArea');
+            if (!area) return;
+            if (!force && chatUserScrolledUp) return;
+            area.scrollTop = area.scrollHeight;
         }
 
         function toggleTheme() {
@@ -1600,7 +1619,7 @@
                 if (attachments && attachments.length) {
                     log.appendChild(buildMcpAttachmentsRow(attachments));
                 }
-                scrollChatToBottom();
+                scrollChatToBottom(true);
             }
         }
 
@@ -1789,7 +1808,7 @@
                 }
             });
             wireReasoningFolds(log);
-            scrollChatToBottom();
+            scrollChatToBottom(true);
         }
 
         function setChatUiLocked(locked) {
@@ -1871,7 +1890,7 @@
             const wrap = document.createElement('div');
             wrap.innerHTML = bubbleHtml(role, contentHtmlEscaped);
             log.appendChild(wrap.firstElementChild);
-            scrollChatToBottom();
+            scrollChatToBottom(true);
         }
 
         function setChatStatusLine(msg) {
@@ -2159,7 +2178,7 @@
                     resumeHitl(btn.getAttribute('data-hitl'));
                 });
             });
-            scrollChatToBottom();
+            scrollChatToBottom(true);
         }
 
         async function resumeHitl(action) {
@@ -2261,6 +2280,7 @@
                 });
                 userPreview += '</div>';
             }
+            resetChatScrollLock();
             appendChatBubble('user', userPreview);
 
             const log = document.getElementById('chatLog');
@@ -2274,7 +2294,7 @@
                 '<div class="bubble-label">助手</div>' +
                 '<div><i class="fa-solid fa-circle-notch fa-spin mr-2 text-sky-400"></i>正在思考…</div></div></div>';
             log.appendChild(pending);
-            scrollChatToBottom();
+            scrollChatToBottom(true);
 
             setChatStatusLine('AI 处理中，请稍候…');
 
@@ -2349,6 +2369,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', function () {
+            bindChatScrollArea();
             const ta = document.getElementById('chatInput');
             if (ta) {
                 ta.addEventListener('keydown', function (e) {

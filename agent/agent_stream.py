@@ -7,7 +7,7 @@ import re
 from collections.abc import AsyncIterator
 from typing import Any
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.types import Command
 from mcp import ClientSession
 
@@ -31,6 +31,7 @@ from agent.agent_service import (
     _create_agent,
 )
 from agent.agent_state import finalize_agent_run
+from agent.task_continue import MAX_DELIVER_CONTINUATIONS, should_continue_deliver
 from config.app_config import AGENT_RECURSION_LIMIT, logger
 from chat.chat_helpers import (
     build_tool_debug_from_messages,
@@ -268,33 +269,60 @@ async def _iter_react_agent_events(
             )
             if k in input_data
         }
+    current_input = input_data
+    continuations = 0
+    reply: str | None = None
+    msgs: list = []
+    hitl: list[dict] | None = None
     last_state: dict[str, Any] = dict(task_baseline)
-    last_harness_sig: str | None = None
-    agent_started = False
-    async for event in agent.astream_events(input_data, config=config, version="v2"):
-        chunk_state = _state_from_chain_event(event)
-        if chunk_state:
-            merged = merge_task_state(last_state, chunk_state)
-            last_state = merged
-            if merged.get("user_goal") or merged.get("harness_enabled"):
-                harness_ev = task_harness_event_payload(merged)
-                sig = _harness_state_signature(harness_ev)
-                if sig != last_harness_sig:
-                    last_harness_sig = sig
-                    yield harness_ev
-        for step in _parse_astream_event(event):
-            if step.get("phase") == "thought":
-                step = {**step, "content": _sanitize_stream_text(step.get("content") or "")}
-                if not step["content"]:
-                    continue
-            if step.get("phase") == "status" and "Agent 开始推理" in (step.get("content") or ""):
-                if agent_started:
-                    continue
-                agent_started = True
-            yield step
-    reply, msgs, hitl = await _finalize_agent(
-        agent, config, collected=last_state or None
-    )
+
+    while True:
+        last_state = dict(task_baseline) if continuations == 0 else last_state
+        last_harness_sig: str | None = None
+        agent_started = False
+        async for event in agent.astream_events(current_input, config=config, version="v2"):
+            chunk_state = _state_from_chain_event(event)
+            if chunk_state:
+                merged = merge_task_state(last_state, chunk_state)
+                last_state = merged
+                if merged.get("user_goal") or merged.get("harness_enabled"):
+                    harness_ev = task_harness_event_payload(merged)
+                    sig = _harness_state_signature(harness_ev)
+                    if sig != last_harness_sig:
+                        last_harness_sig = sig
+                        yield harness_ev
+            for step in _parse_astream_event(event):
+                if step.get("phase") == "thought":
+                    step = {**step, "content": _sanitize_stream_text(step.get("content") or "")}
+                    if not step["content"]:
+                        continue
+                if step.get("phase") == "status" and "Agent 开始推理" in (step.get("content") or ""):
+                    if agent_started:
+                        continue
+                    agent_started = True
+                yield step
+        reply, msgs, hitl = await _finalize_agent(
+            agent, config, collected=last_state or None
+        )
+        if hitl:
+            break
+        nudge = should_continue_deliver(last_state, msgs, reply)
+        if not nudge or continuations >= MAX_DELIVER_CONTINUATIONS:
+            break
+        continuations += 1
+        if last_state.get("harness_enabled"):
+            last_state = {**last_state, "task_phase": "deliver"}
+            from agent.harness import sync_run_context_from_values
+
+            thread_id = str((config.get("configurable") or {}).get("thread_id") or "default")
+            sync_run_context_from_values(thread_id, last_state)
+        yield {
+            "type": "step",
+            "phase": "status",
+            "content": "检测到外发/交付步骤尚未执行，Agent 继续运行…",
+        }
+        current_input = {"messages": [HumanMessage(content=nudge)]}
+
     if last_state.get("user_goal") or last_state.get("harness_enabled"):
         yield task_harness_event_payload(last_state)
     yield {"type": "_agent_result", "reply": reply, "messages": msgs, "hitl": hitl}

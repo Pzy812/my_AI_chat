@@ -9,6 +9,7 @@ from agent.agent_checkpointer import get_checkpointer, reset_agent_thread
 from config.app_config import HITL_ENABLED, LOG_LLM_PROMPT_MAX, logger
 from chat.chat_helpers import last_assistant_text, messages_have_pending_tool_calls
 from agent.hitl_tools import normalize_interrupts, wrap_tools_with_hitl
+from agent.task_continue import MAX_DELIVER_CONTINUATIONS, should_continue_deliver
 from agent.harness import (
     TASK_DISCIPLINE_PROMPT,
     build_initial_agent_state,
@@ -180,20 +181,61 @@ async def _invoke_agent(
             file_count=file_count,
         )
         state = await agent.ainvoke(input_state, config=config)
-    hitl = normalize_interrupts(state.get("__interrupt__"))
-    msgs = state.get("messages") or []
-    pending = messages_have_pending_tool_calls(msgs)
-    if hitl and not pending:
-        hitl = []
-    elif not hitl and pending:
-        from agent.agent_state import synthetic_hitl_from_messages
 
-        hitl = synthetic_hitl_from_messages(msgs) or None
-    if hitl:
-        return None, msgs, hitl
-    if pending:
-        return None, msgs, None
-    return last_assistant_text(msgs), msgs, None
+    task_state = {
+        k: state.get(k)
+        for k in (
+            "user_goal",
+            "plan",
+            "plan_index",
+            "task_phase",
+            "harness_enabled",
+            "completed_steps",
+            "task_status",
+        )
+        if k in state
+    }
+    continuations = 0
+    while True:
+        hitl = normalize_interrupts(state.get("__interrupt__"))
+        msgs = state.get("messages") or []
+        pending = messages_have_pending_tool_calls(msgs)
+        if hitl and not pending:
+            hitl = []
+        elif not hitl and pending:
+            from agent.agent_state import synthetic_hitl_from_messages
+
+            hitl = synthetic_hitl_from_messages(msgs) or None
+        if hitl:
+            return None, msgs, hitl
+        if pending:
+            return None, msgs, None
+        reply = last_assistant_text(msgs)
+        nudge = should_continue_deliver(task_state, msgs, reply)
+        if not nudge or continuations >= MAX_DELIVER_CONTINUATIONS:
+            return reply, msgs, None
+        continuations += 1
+        if task_state.get("harness_enabled"):
+            task_state = {**task_state, "task_phase": "deliver"}
+            from agent.harness import sync_run_context_from_values
+
+            sync_run_context_from_values(session_id, task_state)
+        state = await agent.ainvoke(
+            {"messages": [HumanMessage(content=nudge)]}, config=config
+        )
+        task_state = {
+            k: state.get(k)
+            for k in (
+                "user_goal",
+                "plan",
+                "plan_index",
+                "task_phase",
+                "harness_enabled",
+                "completed_steps",
+                "task_status",
+            )
+            if k in state
+        } or task_state
 
 
 async def _invoke_react_agent(

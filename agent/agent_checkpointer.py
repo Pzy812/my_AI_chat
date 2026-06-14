@@ -126,10 +126,15 @@ async def init_checkpointer() -> bool:
 
 async def reset_agent_thread(session_id: str) -> None:
     """每轮对话前清空 thread checkpoint，避免与 chat_store 最近 N 条重复叠加。"""
+    from agent.harness import clear_run_context
+    from agent.task_continue import clear_deliver_flags
+
     cp = get_checkpointer()
+    sid = (session_id or "default").strip() or "default"
+    clear_deliver_flags(sid)
+    clear_run_context(sid)
     if cp is None:
         return
-    sid = (session_id or "default").strip() or "default"
     try:
         await cp.adelete_thread({"configurable": {"thread_id": sid}})
     except Exception as e:
