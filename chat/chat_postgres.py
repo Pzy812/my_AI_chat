@@ -269,17 +269,49 @@ def clear_session(session_id: str) -> None:
         conn.commit()
 
 
-def set_session_title(session_id: str, title: str) -> None:
+def get_session_meta(session_id: str) -> dict[str, Any]:
+    sid = _norm_session_id(session_id)
+    with _get_pool().connection() as conn:
+        row = conn.execute(
+            "SELECT title, extras FROM chat_sessions WHERE session_id = %s",
+            (sid,),
+        ).fetchone()
+    if not row:
+        return {
+            "title": sid,
+            "title_manual": False,
+            "auto_title_done": False,
+        }
+    extras = row.get("extras") or {}
+    if isinstance(extras, str):
+        try:
+            extras = json.loads(extras)
+        except Exception:
+            extras = {}
+    if not isinstance(extras, dict):
+        extras = {}
+    return {
+        "title": (row.get("title") or sid).strip() or sid,
+        "title_manual": bool(extras.get("title_manual")),
+        "auto_title_done": bool(extras.get("auto_title_done")),
+    }
+
+
+def set_session_title(session_id: str, title: str, *, manual: bool = True) -> None:
     sid = _norm_session_id(session_id)
     t = (title or sid).strip() or sid
+    extras_patch = {"title_manual": True} if manual else {"auto_title_done": True, "title_manual": False}
     with _get_pool().connection() as conn:
         conn.execute(
             """
-            INSERT INTO chat_sessions (session_id, title, updated_at)
-            VALUES (%s, %s, NOW())
-            ON CONFLICT (session_id) DO UPDATE SET title = EXCLUDED.title, updated_at = NOW()
+            INSERT INTO chat_sessions (session_id, title, updated_at, extras)
+            VALUES (%s, %s, NOW(), %s::jsonb)
+            ON CONFLICT (session_id) DO UPDATE SET
+                title = EXCLUDED.title,
+                updated_at = NOW(),
+                extras = COALESCE(chat_sessions.extras, '{}'::jsonb) || EXCLUDED.extras
             """,
-            (sid, t),
+            (sid, t, json.dumps(extras_patch, ensure_ascii=False)),
         )
         conn.commit()
 

@@ -151,10 +151,16 @@ def _clear_agent_checkpoint(session_id: str) -> None:
         pass
 
 
-def set_session_title(session_id: str, title: str) -> None:
+def get_session_meta(session_id: str) -> dict[str, Any]:
     if _pg_ok():
-        chat_postgres.set_session_title(session_id, title)
-    chat_redis.set_session_title(session_id, title)
+        return chat_postgres.get_session_meta(session_id)
+    return chat_redis.get_session_meta(session_id)
+
+
+def set_session_title(session_id: str, title: str, *, manual: bool = True) -> None:
+    if _pg_ok():
+        chat_postgres.set_session_title(session_id, title, manual=manual)
+    chat_redis.set_session_title(session_id, title, manual=manual)
 
 
 def list_sessions(limit: int = 80) -> list[dict[str, Any]]:

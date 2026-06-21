@@ -137,7 +137,7 @@
             border-radius: 99px;
         }
         #sessionAsideList {
-            max-height: 140px;
+            max-height: min(42vh, 320px);
             overflow-y: auto;
         }
         .feature-pill-compact {
@@ -701,16 +701,59 @@
             border-radius: 99px;
         }
         .session-item {
-            border-radius: 10px;
+            border-radius: 12px;
             border: 1px solid transparent;
-            padding: 0.45rem 0.5rem;
+            padding: 0.55rem 0.6rem;
             cursor: pointer;
             transition: background 0.15s, border-color 0.15s;
         }
         .session-item:hover { background: rgba(51,65,85,0.45); border-color: rgba(148,163,184,0.12); }
         .session-item.active {
-            border-color: rgba(56,189,248,0.35);
-            background: rgba(14,165,233,0.08);
+            border-color: rgba(148,163,184,0.18);
+            background: rgba(51,65,85,0.55);
+        }
+        [data-theme="light"] .session-item.active {
+            background: rgba(226,232,240,0.85);
+            border-color: rgba(148,163,184,0.35);
+        }
+        .session-item-icon {
+            width: 1.75rem;
+            height: 1.75rem;
+            border-radius: 999px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            background: rgba(100,116,139,0.18);
+            border: 1px solid rgba(148,163,184,0.15);
+        }
+        .session-item.active .session-item-icon {
+            color: var(--accent-sky);
+            background: rgba(14,165,233,0.12);
+            border-color: rgba(56,189,248,0.25);
+        }
+        .session-item-title {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-heading);
+            line-height: 1.35;
+        }
+        .session-item-id {
+            font-size: 0.6875rem;
+            color: var(--text-muted);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            line-height: 1.35;
+            margin-top: 0.1rem;
+        }
+        .session-item-actions {
+            opacity: 0;
+            transition: opacity 0.15s;
+        }
+        .session-item:hover .session-item-actions,
+        .session-item.active .session-item-actions {
+            opacity: 1;
         }
         #toolDebugPanel { font-size: 0.8125rem; }
         #toolDebugPanel pre { max-height: 320px; overflow: auto; }
@@ -758,6 +801,101 @@
         .theme-toggle-btn:hover {
             background: var(--bg-ghost-hover);
             color: var(--text-primary);
+        }
+        .settings-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+        .settings-modal.hidden { display: none; }
+        .settings-modal-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.72);
+            backdrop-filter: blur(4px);
+        }
+        .settings-modal-panel {
+            position: relative;
+            width: min(100%, 480px);
+            max-height: min(90vh, 640px);
+            overflow-y: auto;
+            border-radius: 18px;
+            border: 1px solid var(--border-soft);
+            background: var(--bg-panel);
+            box-shadow: var(--shadow-panel);
+            padding: 1.25rem 1.35rem 1.1rem;
+        }
+        .settings-modal-panel h2 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            color: var(--text-heading);
+            margin-bottom: 0.35rem;
+        }
+        .settings-field {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            margin-top: 0.85rem;
+        }
+        .settings-field label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .settings-field .field-hint {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            line-height: 1.45;
+        }
+        .settings-provider-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.85rem;
+        }
+        .settings-provider-tab {
+            flex: 1;
+            border: 1px solid var(--border-soft);
+            border-radius: 12px;
+            padding: 0.55rem 0.65rem;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            background: var(--bg-ghost);
+            color: var(--text-secondary);
+            transition: border-color 0.15s, background 0.15s, color 0.15s;
+        }
+        .settings-provider-tab.active {
+            border-color: rgba(56,189,248,0.45);
+            background: rgba(14,165,233,0.12);
+            color: var(--accent-sky);
+        }
+        .settings-section { display: none; }
+        .settings-section.active { display: block; }
+        .settings-modal-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            justify-content: flex-end;
+            margin-top: 1.15rem;
+            padding-top: 0.85rem;
+            border-top: 1px solid var(--border-soft);
+        }
+        .llm-model-badge {
+            font-size: 0.68rem;
+            padding: 0.2rem 0.55rem;
+            border-radius: 999px;
+            border: 1px solid rgba(56,189,248,0.35);
+            background: rgba(14,165,233,0.1);
+            color: var(--accent-sky);
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
         .hitl-status-banner {
             border-radius: 12px;
@@ -835,7 +973,7 @@
             <div class="sidebar-sessions-block glass-panel rounded-xl p-3">
                 <div class="flex items-center justify-between gap-2 mb-2">
                     <p class="font-semibold text-emerald-200 text-xs flex items-center gap-1.5">
-                        <i class="fa-solid fa-list-ul text-emerald-400"></i>最近会话
+                        <i class="fa-solid fa-clock-rotate-left text-emerald-400"></i>历史对话
                     </p>
                     <div class="flex gap-1 shrink-0">
                         <button type="button" onclick="createNewSession()" class="text-[10px] px-2 py-1 rounded-md bg-slate-700/80 hover:bg-slate-600/90 text-slate-200 border border-slate-600/40">新会话</button>
@@ -888,11 +1026,13 @@
                             <option value="">加载中…</option>
                         </select>
                         <div class="flex flex-wrap gap-1.5 shrink-0">
+                            <button type="button" id="llmSettingsBtn" onclick="openLlmSettings()" class="btn-ghost rounded-lg px-3 py-2 text-xs text-slate-200" title="对话设置与模型"><i class="fa-solid fa-gear mr-1"></i>设置</button>
                             <button type="button" onclick="createNewSession()" class="btn-ghost rounded-lg px-3 py-2 text-xs text-slate-200">新会话</button>
                             <button type="button" id="chatRefreshBtn" onclick="loadChatHistory()" class="btn-ghost rounded-lg px-3 py-2 text-xs text-slate-200"><i class="fa-solid fa-rotate mr-1"></i>刷新</button>
                             <button type="button" id="chatClearBtn" onclick="clearChatMemory()" class="rounded-lg px-3 py-2 text-xs text-rose-200 border border-rose-500/35 bg-rose-950/35">清空</button>
                         </div>
                     </div>
+                    <span id="llmModelBadge" class="llm-model-badge hidden" title="当前对话模型"></span>
                 </div>
                 <div id="hitlStatusBanner" class="hitl-status-banner ok mt-2 hidden">
                     <i class="fa-solid fa-user-check mr-1.5"></i><span id="hitlStatusText">Human-in-the-Loop 已启用</span>
@@ -963,6 +1103,70 @@
         </main>
     </div>
 
+    <div id="llmSettingsModal" class="settings-modal hidden" role="dialog" aria-labelledby="llmSettingsTitle" aria-modal="true">
+        <div class="settings-modal-backdrop" onclick="closeLlmSettings()"></div>
+        <div class="settings-modal-panel">
+            <h2 id="llmSettingsTitle"><i class="fa-solid fa-gear mr-1.5 text-sky-400"></i>设置</h2>
+            <p class="text-xs text-slate-500 leading-relaxed">对话行为与模型配置。API Key 留空时使用服务端 <code class="text-[10px]">.env</code> 中的密钥。</p>
+
+            <div class="settings-field">
+                <label class="flex items-start gap-2 cursor-pointer select-none">
+                    <input type="checkbox" id="cbHitlEnabled" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-emerald-500" checked>
+                    <span>
+                        <span class="text-sm font-semibold text-slate-200 block">Human-in-the-Loop</span>
+                        <span class="field-hint block mt-0.5">开启后，发邮件、发微信、导出 Excel 等敏感操作需您在前端点击「确认执行」；关闭则直接执行。</span>
+                    </span>
+                </label>
+            </div>
+
+            <div class="mt-3 pt-3 border-t border-slate-600/30">
+                <p class="text-xs font-semibold text-slate-400 mb-1">模型与 API Key</p>
+            </div>
+
+            <div class="settings-provider-tabs">
+                <button type="button" class="settings-provider-tab active" data-provider="zhipu" onclick="switchLlmProvider('zhipu')">智谱 AI</button>
+                <button type="button" class="settings-provider-tab" data-provider="custom" onclick="switchLlmProvider('custom')">其他模型</button>
+            </div>
+
+            <div id="zhipuSettingsSection" class="settings-section active">
+                <div class="settings-field">
+                    <label for="zhipuModelSelect">智谱模型</label>
+                    <select id="zhipuModelSelect" class="input-dark rounded-lg px-3 py-2 text-sm" onchange="onZhipuModelSelectChange()">
+                        <option value="glm-4">GLM-4</option>
+                    </select>
+                    <input id="zhipuModelCustom" class="input-dark rounded-lg px-3 py-2 text-sm" placeholder="或手动输入模型名（如 glm-4.7）">
+                    <span class="field-hint">可从下拉框选择常用模型，或在下方输入框填写完整模型 ID。</span>
+                </div>
+                <div class="settings-field">
+                    <label for="zhipuApiKey">智谱 API Key</label>
+                    <input id="zhipuApiKey" type="password" class="input-dark rounded-lg px-3 py-2 text-sm" placeholder="留空则使用服务端 ZHIPUAI_API_KEY" autocomplete="off">
+                    <span id="zhipuApiKeyHint" class="field-hint"></span>
+                </div>
+            </div>
+
+            <div id="customSettingsSection" class="settings-section">
+                <div class="settings-field">
+                    <label for="customModelName">模型名称</label>
+                    <input id="customModelName" class="input-dark rounded-lg px-3 py-2 text-sm" placeholder="如 deepseek-chat、gpt-4o-mini">
+                </div>
+                <div class="settings-field">
+                    <label for="customBaseUrl">API Base URL（OpenAI 兼容）</label>
+                    <input id="customBaseUrl" class="input-dark rounded-lg px-3 py-2 text-sm" placeholder="如 https://api.deepseek.com/v1">
+                </div>
+                <div class="settings-field">
+                    <label for="customApiKey">API Key</label>
+                    <input id="customApiKey" type="password" class="input-dark rounded-lg px-3 py-2 text-sm" placeholder="必填（或配置服务端 OPENAI_API_KEY）" autocomplete="off">
+                </div>
+            </div>
+
+            <div class="settings-modal-actions">
+                <button type="button" onclick="closeLlmSettings()" class="btn-ghost rounded-lg px-3 py-2 text-xs text-slate-300">取消</button>
+                <button type="button" id="llmSettingsValidateBtn" onclick="validateLlmSettings()" class="btn-ghost rounded-lg px-3 py-2 text-xs text-slate-200"><i class="fa-solid fa-flask mr-1"></i>测试</button>
+                <button type="button" onclick="saveLlmSettings()" class="composer-send-btn text-xs px-4 py-2"><i class="fa-solid fa-check mr-1"></i>保存</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let chatAwaitingReply = false;
         let pendingUploads = [];
@@ -976,12 +1180,18 @@
         const REASONING_EXPANDED_KEY = 'aiChatReasoningExpanded';
         const REASONING_TRACE_KEY = 'aiChatReasoningTraces';
         const THEME_STORAGE_KEY = 'aiChatTheme';
+        const LLM_CONFIG_STORAGE_KEY = 'aiChatLlmConfig';
+        const HITL_ENABLED_STORAGE_KEY = 'aiChatHitlEnabled';
+        let serverLlmDefaults = null;
+        let activeLlmProvider = 'zhipu';
 
         window.onload = function () {
             initThemeToggle();
             initRagModeSelector();
             initReasoningCheckbox();
             initReasoningExpandedCheckbox();
+            initLlmSettings();
+            initHitlSettings();
             loadServiceStatus();
             loadChatHistory();
             loadSessions();
@@ -1036,23 +1246,56 @@
             const banner = document.getElementById('hitlStatusBanner');
             const textEl = document.getElementById('hitlStatusText');
             if (!banner || !textEl) return;
+            const userHitl = isHitlEnabled();
             try {
                 const res = await fetch(apiBase() + '/service/status').then(function (r) { return r.json(); });
                 if (!res || res.code !== 0) return;
                 banner.classList.remove('hidden', 'ok', 'warn');
-                if (res.hitl_available) {
+                if (res.hitl_available && userHitl) {
                     banner.classList.add('ok');
                     var cp = res.checkpointer === 'postgres' ? 'Postgres' : (res.checkpointer === 'memory' ? '内存' : '');
-                    textEl.textContent = 'Human-in-the-Loop 已启用' + (cp ? '（' + cp + ' checkpoint）' : '') + ' · 发邮件/微信前需您确认';
+                    textEl.textContent = 'Human-in-the-Loop 已开启' + (cp ? '（' + cp + ' checkpoint）' : '') + ' · 敏感操作需您确认';
+                } else if (res.hitl_available && !userHitl) {
+                    banner.classList.add('warn');
+                    textEl.textContent = '您已在设置中关闭 Human-in-the-Loop · 敏感操作将直接执行';
                 } else {
                     banner.classList.add('warn');
-                    textEl.textContent = 'Human-in-the-Loop 未启用：敏感操作将直接执行。请重启 app.py 并确保 HITL_ENABLED=1';
+                    textEl.textContent = '服务端 HITL 未启用：敏感操作将直接执行。请重启 app.py 并确保 HITL_ENABLED=1';
                 }
             } catch (e) {
                 banner.classList.remove('hidden');
                 banner.classList.add('warn');
                 textEl.textContent = '无法读取 HITL 状态';
             }
+        }
+
+        function initHitlSettings() {
+            const cb = document.getElementById('cbHitlEnabled');
+            if (!cb) return;
+            cb.checked = localStorage.getItem(HITL_ENABLED_STORAGE_KEY) !== '0';
+            cb.addEventListener('change', function () {
+                localStorage.setItem(HITL_ENABLED_STORAGE_KEY, cb.checked ? '1' : '0');
+                loadServiceStatus();
+            });
+        }
+
+        function isHitlEnabled() {
+            const cb = document.getElementById('cbHitlEnabled');
+            if (cb) return cb.checked;
+            return localStorage.getItem(HITL_ENABLED_STORAGE_KEY) !== '0';
+        }
+
+        function syncHitlSettingsUi() {
+            const cb = document.getElementById('cbHitlEnabled');
+            if (!cb) return;
+            cb.checked = localStorage.getItem(HITL_ENABLED_STORAGE_KEY) !== '0';
+        }
+
+        function refreshSessionsLater() {
+            loadSessions().catch(function () { /* ignore */ });
+            setTimeout(function () {
+                loadSessions().catch(function () { /* ignore */ });
+            }, 2800);
         }
 
         function initReasoningExpandedCheckbox() {
@@ -1260,6 +1503,206 @@
 
         function ragModeLabel(mode) {
             return mode === 'graphrag' ? 'GraphRAG' : 'RAG';
+        }
+
+        function getStoredLlmConfig() {
+            try {
+                const raw = localStorage.getItem(LLM_CONFIG_STORAGE_KEY);
+                if (!raw) return null;
+                return JSON.parse(raw);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function getLlmConfig() {
+            const stored = getStoredLlmConfig();
+            if (stored && stored.model) {
+                return {
+                    provider: stored.provider === 'custom' ? 'custom' : 'zhipu',
+                    model: String(stored.model || '').trim(),
+                    api_key: String(stored.api_key || '').trim(),
+                    base_url: String(stored.base_url || '').trim()
+                };
+            }
+            if (serverLlmDefaults && serverLlmDefaults.model) {
+                return {
+                    provider: 'zhipu',
+                    model: serverLlmDefaults.model,
+                    api_key: '',
+                    base_url: ''
+                };
+            }
+            return { provider: 'zhipu', model: 'glm-4', api_key: '', base_url: '' };
+        }
+
+        function llmConfigLabel(cfg) {
+            if (!cfg) cfg = getLlmConfig();
+            const model = cfg.model || 'glm-4';
+            return cfg.provider === 'custom' ? model : ('智谱 · ' + model);
+        }
+
+        function updateLlmModelBadge() {
+            const badge = document.getElementById('llmModelBadge');
+            if (!badge) return;
+            const cfg = getLlmConfig();
+            badge.textContent = llmConfigLabel(cfg);
+            badge.title = '当前对话模型：' + llmConfigLabel(cfg);
+            badge.classList.remove('hidden');
+        }
+
+        async function initLlmSettings() {
+            try {
+                const res = await fetch(apiBase() + '/settings/llm').then(function (r) { return r.json(); });
+                if (res && res.code === 0) {
+                    serverLlmDefaults = res;
+                    populateZhipuModelSelect(res.zhipu_presets || [], res.model);
+                    const hint = document.getElementById('zhipuApiKeyHint');
+                    if (hint) {
+                        hint.textContent = res.api_key_configured
+                            ? ('服务端已配置密钥：' + (res.api_key_masked || '****'))
+                            : '服务端未配置 ZHIPUAI_API_KEY，请在此填写或配置 .env';
+                    }
+                }
+            } catch (e) {
+                console.warn('load llm defaults failed', e);
+            }
+            updateLlmModelBadge();
+        }
+
+        function populateZhipuModelSelect(presets, defaultModel) {
+            const sel = document.getElementById('zhipuModelSelect');
+            if (!sel) return;
+            const ids = new Set();
+            sel.innerHTML = '';
+            (presets || []).forEach(function (p) {
+                if (!p || !p.id || ids.has(p.id)) return;
+                ids.add(p.id);
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.label ? (p.label + ' (' + p.id + ')') : p.id;
+                sel.appendChild(opt);
+            });
+            const customOpt = document.createElement('option');
+            customOpt.value = '__custom__';
+            customOpt.textContent = '自定义（使用下方输入框）';
+            sel.appendChild(customOpt);
+            const model = (getStoredLlmConfig() && getStoredLlmConfig().model) || defaultModel || 'glm-4';
+            if (ids.has(model)) {
+                sel.value = model;
+            } else {
+                sel.value = '__custom__';
+            }
+        }
+
+        function onZhipuModelSelectChange() {
+            const sel = document.getElementById('zhipuModelSelect');
+            const custom = document.getElementById('zhipuModelCustom');
+            if (!sel || !custom) return;
+            if (sel.value !== '__custom__') {
+                custom.value = sel.value;
+            }
+        }
+
+        function switchLlmProvider(provider) {
+            activeLlmProvider = provider === 'custom' ? 'custom' : 'zhipu';
+            document.querySelectorAll('.settings-provider-tab').forEach(function (tab) {
+                tab.classList.toggle('active', tab.getAttribute('data-provider') === activeLlmProvider);
+            });
+            document.getElementById('zhipuSettingsSection').classList.toggle('active', activeLlmProvider === 'zhipu');
+            document.getElementById('customSettingsSection').classList.toggle('active', activeLlmProvider === 'custom');
+        }
+
+        function readLlmSettingsForm() {
+            const provider = activeLlmProvider === 'custom' ? 'custom' : 'zhipu';
+            if (provider === 'zhipu') {
+                const sel = document.getElementById('zhipuModelSelect');
+                const custom = document.getElementById('zhipuModelCustom');
+                let model = (custom && custom.value.trim()) || '';
+                if (!model && sel && sel.value && sel.value !== '__custom__') {
+                    model = sel.value;
+                }
+                return {
+                    provider: 'zhipu',
+                    model: model,
+                    api_key: (document.getElementById('zhipuApiKey') || {}).value || '',
+                    base_url: ''
+                };
+            }
+            return {
+                provider: 'custom',
+                model: (document.getElementById('customModelName') || {}).value || '',
+                api_key: (document.getElementById('customApiKey') || {}).value || '',
+                base_url: (document.getElementById('customBaseUrl') || {}).value || ''
+            };
+        }
+
+        function fillLlmSettingsForm(cfg) {
+            cfg = cfg || getLlmConfig();
+            switchLlmProvider(cfg.provider === 'custom' ? 'custom' : 'zhipu');
+            if (cfg.provider === 'custom') {
+                const m = document.getElementById('customModelName');
+                const b = document.getElementById('customBaseUrl');
+                const k = document.getElementById('customApiKey');
+                if (m) m.value = cfg.model || '';
+                if (b) b.value = cfg.base_url || '';
+                if (k) k.value = cfg.api_key || '';
+                return;
+            }
+            const sel = document.getElementById('zhipuModelSelect');
+            const custom = document.getElementById('zhipuModelCustom');
+            const key = document.getElementById('zhipuApiKey');
+            const model = cfg.model || 'glm-4';
+            if (custom) custom.value = model;
+            if (sel) {
+                const has = Array.from(sel.options).some(function (o) { return o.value === model; });
+                sel.value = has ? model : '__custom__';
+            }
+            if (key) key.value = cfg.api_key || '';
+        }
+
+        function openLlmSettings() {
+            fillLlmSettingsForm(getLlmConfig());
+            syncHitlSettingsUi();
+            const modal = document.getElementById('llmSettingsModal');
+            if (modal) modal.classList.remove('hidden');
+        }
+
+        function closeLlmSettings() {
+            const modal = document.getElementById('llmSettingsModal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function saveLlmSettings() {
+            const cfg = readLlmSettingsForm();
+            if (!cfg.model) {
+                showToast('请填写或选择模型名称', 'error');
+                return;
+            }
+            if (cfg.provider === 'custom' && !cfg.api_key && !(serverLlmDefaults && serverLlmDefaults.api_key_configured)) {
+                showToast('其他模型需填写 API Key', 'error');
+                return;
+            }
+            localStorage.setItem(LLM_CONFIG_STORAGE_KEY, JSON.stringify(cfg));
+            updateLlmModelBadge();
+            closeLlmSettings();
+            showToast('模型设置已保存：' + llmConfigLabel(cfg), 'success');
+        }
+
+        async function validateLlmSettings() {
+            const cfg = readLlmSettingsForm();
+            if (!cfg.model) {
+                showToast('请填写或选择模型名称', 'error');
+                return;
+            }
+            const btn = document.getElementById('llmSettingsValidateBtn');
+            if (btn) btn.disabled = true;
+            try {
+                const res = await api('/settings/llm/validate', { llm_config: cfg });
+                showToast(res.msg || (res.code === 0 ? '配置有效' : '校验失败'), res.code === 0 ? 'success' : 'error');
+            } finally {
+                if (btn) btn.disabled = false;
+            }
         }
 
         function apiBase() {
@@ -1943,6 +2386,12 @@
             }
         }
 
+        function sessionDisplayTitle(s) {
+            const t = (s.title || '').trim();
+            if (t && t !== s.id) return t;
+            return '新对话';
+        }
+
         function fillSessionNavSelect(sessions) {
             const sel = document.getElementById('sessionNavSelect');
             if (!sel) return;
@@ -1951,7 +2400,7 @@
             sessions.forEach(s => {
                 const o = document.createElement('option');
                 o.value = s.id;
-                const t = (s.title || s.id).slice(0, 48);
+                const t = sessionDisplayTitle(s).slice(0, 48);
                 o.textContent = t + (s.message_count != null ? ' (' + s.message_count + '条)' : '');
                 if (s.id === cur) o.selected = true;
                 sel.appendChild(o);
@@ -1972,12 +2421,14 @@
             sessions.forEach(s => {
                 const li = document.createElement('li');
                 li.className = 'session-item' + (s.id === cur ? ' active' : '');
+                const title = sessionDisplayTitle(s);
                 li.innerHTML =
-                    '<div class="flex justify-between gap-2 items-start">' +
+                    '<div class="flex gap-2.5 items-start">' +
+                    '<div class="session-item-icon"><i class="fa-regular fa-comment-dots"></i></div>' +
                     '<div class="min-w-0 flex-1" data-sid="' + escapeHtml(s.id) + '">' +
-                    '<p class="font-medium text-slate-200 truncate">' + escapeHtml(s.title || s.id) + '</p>' +
-                    '<p class="text-[10px] text-slate-500 font-mono truncate">' + escapeHtml(s.id) + '</p></div>' +
-                    '<div class="flex flex-col gap-0.5 shrink-0">' +
+                    '<p class="session-item-title truncate">' + escapeHtml(title) + '</p>' +
+                    '<p class="session-item-id truncate">' + escapeHtml(s.id) + '</p></div>' +
+                    '<div class="session-item-actions flex flex-col gap-0.5 shrink-0 pt-0.5">' +
                     '<button type="button" class="text-[10px] text-sky-300 hover:underline px-0" data-act="rn">改名</button>' +
                     '<button type="button" class="text-[10px] text-rose-300 hover:underline px-0" data-act="del">删除</button>' +
                     '</div></div>';
@@ -2016,7 +2467,8 @@
         }
 
         async function renameSessionById(sid) {
-            const t = prompt('新的会话标题', sid);
+            const curTitle = sessionDisplayTitle({ id: sid, title: sid });
+            const t = prompt('新的会话标题', curTitle === '新对话' ? sid : curTitle);
             if (t == null || !String(t).trim()) return;
             const res = await api('/chat/session/rename', { session_id: sid, title: String(t).trim() });
             showToast(res.msg || (res.code === 0 ? '已保存' : '失败'), res.code === 0 ? 'success' : 'error');
@@ -2205,7 +2657,9 @@
                 rag_mode: hitlContext.ragMode,
                 rag_query: hitlContext.ragQuery,
                 file_ids: hitlContext.fileIds,
-                include_tool_debug: hitlContext.wantDebug
+                include_tool_debug: hitlContext.wantDebug,
+                llm_config: hitlContext.llmConfig,
+                hitl_enabled: hitlContext.hitlEnabled
             };
             let res = null;
             const runSignal = beginChatRun();
@@ -2255,7 +2709,7 @@
             }
             setChatUiLocked(false);
             loadChatHistory({ silent: true }).catch(function () { /* ignore */ });
-            loadSessions().catch(function () { /* ignore */ });
+            refreshSessionsLater();
         }
 
         async function sendChatMessage() {
@@ -2303,7 +2757,9 @@
                 ragMode: getRagMode(),
                 ragQuery: text,
                 fileIds: fileIds.slice(),
-                wantDebug: wantDebug
+                wantDebug: wantDebug,
+                llmConfig: getLlmConfig(),
+                hitlEnabled: isHitlEnabled()
             };
 
             let res = null;
@@ -2314,7 +2770,9 @@
                     message: text,
                     file_ids: fileIds,
                     rag_mode: hitlCtx.ragMode,
-                    include_tool_debug: wantDebug
+                    include_tool_debug: wantDebug,
+                    llm_config: hitlCtx.llmConfig,
+                    hitl_enabled: hitlCtx.hitlEnabled
                 };
                 if (wantReasoningStream()) {
                     let reasoningPanel = mountReasoningOnPending(pending);
@@ -2365,7 +2823,7 @@
 
             setChatUiLocked(false);
             loadChatHistory({ silent: true }).catch(function () { /* ignore */ });
-            loadSessions().catch(function () { /* ignore */ });
+            refreshSessionsLater();
         }
 
         document.addEventListener('DOMContentLoaded', function () {

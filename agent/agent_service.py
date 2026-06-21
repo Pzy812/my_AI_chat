@@ -19,6 +19,7 @@ from agent.harness import (
 )
 from agent.task_state import TaskHarnessState
 from llm.llm_zhipu import make_chat_llm
+from llm.model_config import make_llm_from_config
 import app_mcp.mcp_lifecycle as mcp_lifecycle
 
 CHAT_AGENT_PROMPT = (
@@ -45,6 +46,11 @@ CHAT_OFFLINE_PROMPT_SUFFIX = (
 
 def hitl_available() -> bool:
     return bool(HITL_ENABLED and get_checkpointer() is not None)
+
+
+def effective_hitl_enabled(user_enabled: bool = True) -> bool:
+    """服务端 HITL 可用且用户未关闭时启用。"""
+    return bool(user_enabled and hitl_available())
 
 
 def chat_agent_prompt_with_rag(rag_context: str | None) -> str:
@@ -98,7 +104,11 @@ def prompt_debug_payload(system_prompt: str, rag_context: str | None) -> dict:
     }
 
 
-async def langchain_tools_from_mcp_session(session: ClientSession):
+async def langchain_tools_from_mcp_session(
+    session: ClientSession,
+    *,
+    hitl_enabled: bool = True,
+):
     """拉全量 MCP 工具（分页 list_tools，避免只读到第一页）。"""
     from langchain_mcp.toolkit import MCPTool
 
@@ -120,7 +130,9 @@ async def langchain_tools_from_mcp_session(session: ClientSession):
         )
         for t in defs
     ]
-    tools = wrap_tools_with_phase_gate(wrap_tools_with_hitl(tools, enabled=hitl_available()))
+    tools = wrap_tools_with_phase_gate(
+        wrap_tools_with_hitl(tools, enabled=effective_hitl_enabled(hitl_enabled))
+    )
     return tools
 
 
@@ -290,9 +302,10 @@ async def run_chat_llm_only(
     *,
     session_id: str = "",
     log_prompt: bool = False,
+    llm_config: dict | None = None,
 ) -> tuple[str | None, list, list[dict] | None]:
     """MCP 不可用时：直接用 GLM 对话（附件正文已在消息里）。"""
-    llm = make_chat_llm()
+    llm = make_llm_from_config(llm_config)
     prompt = chat_agent_prompt_with_rag(rag_context) + CHAT_OFFLINE_PROMPT_SUFFIX
     if log_prompt:
         log_llm_system_prompt(
@@ -313,6 +326,8 @@ async def run_agent_with_history(
     session_id: str = "",
     log_prompt: bool = False,
     file_count: int = 0,
+    llm_config: dict | None = None,
+    hitl_enabled: bool = True,
 ) -> tuple[str | None, list, list[dict] | None]:
     """带完整上下文的 Agent；返回 (助手文本|None, 消息列表, HITL pending|None)。"""
     from core.app_utils import format_error
@@ -323,6 +338,7 @@ async def run_agent_with_history(
             rag_context=rag_context,
             session_id=session_id,
             log_prompt=log_prompt,
+            llm_config=llm_config,
         )
     try:
         if log_prompt:
@@ -332,10 +348,10 @@ async def run_agent_with_history(
                 session_id=session_id,
                 rag_context=rag_context,
             )
-        llm = make_chat_llm()
+        llm = make_llm_from_config(llm_config)
         async with open_mcp_transport() as (r, w, _):
             async with ClientSession(r, w) as session:
-                tools = await langchain_tools_from_mcp_session(session)
+                tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
                 return await _invoke_react_agent(
                     llm,
                     tools,
@@ -355,6 +371,7 @@ async def run_agent_with_history(
             rag_context=rag_context,
             session_id=session_id,
             log_prompt=log_prompt,
+            llm_config=llm_config,
         )
 
 
@@ -364,12 +381,14 @@ async def run_agent_hitl_resume(
     *,
     rag_context: str | None = None,
     log_prompt: bool = False,
+    llm_config: dict | None = None,
+    hitl_enabled: bool = True,
 ) -> tuple[str | None, list, list[dict] | None]:
     """用户确认/取消后，从 checkpoint 继续 Agent（不再 reset thread）。"""
     if not await mcp_lifecycle.ensure_mcp_server_started_async():
         raise RuntimeError("MCP 未就绪，无法恢复 HITL 会话")
-    if not hitl_available():
-        raise RuntimeError("HITL 未启用或未配置 Postgres Checkpointer")
+    if not effective_hitl_enabled(hitl_enabled):
+        raise RuntimeError("Human-in-the-Loop 未启用或已在设置中关闭")
     if log_prompt:
         log_llm_system_prompt(
             "react_agent_hitl_resume",
@@ -377,10 +396,10 @@ async def run_agent_hitl_resume(
             session_id=session_id,
             rag_context=rag_context,
         )
-    llm = make_chat_llm()
+    llm = make_llm_from_config(llm_config)
     async with open_mcp_transport() as (r, w, _):
         async with ClientSession(r, w) as session:
-            tools = await langchain_tools_from_mcp_session(session)
+            tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
             return await _invoke_react_agent(
                 llm,
                 tools,

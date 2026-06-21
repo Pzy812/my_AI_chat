@@ -13,6 +13,7 @@ neo4j>=5.0.0
 langchain-text-splitters
 rank-bm25>=0.2.2
 httpx
+openai>=1.0.0
 requests
 charset-normalizer>=3.4.0
 prettytable

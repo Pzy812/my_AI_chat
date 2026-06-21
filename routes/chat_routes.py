@@ -48,7 +48,28 @@ from upload.file_upload import (
     safe_filename,
 )
 
+from llm.model_config import normalize_llm_config
+
 bp = Blueprint("chat", __name__)
+
+
+def _extract_llm_config(data: dict) -> dict:
+    return normalize_llm_config(data.get("llm_config") or data.get("llm") or None)
+
+
+def _extract_hitl_enabled(data: dict) -> bool:
+    val = data.get("hitl_enabled")
+    if val is None:
+        return True
+    if isinstance(val, str):
+        return val.strip().lower() not in ("0", "false", "no", "off")
+    return bool(val)
+
+
+def _maybe_schedule_auto_title(session_id: str) -> None:
+    from chat.session_title import schedule_session_auto_title
+
+    schedule_session_auto_title(session_id)
 
 
 def _sse_payload(data: dict) -> str:
@@ -145,6 +166,8 @@ def _prepare_chat_message_context(data: dict):
         "rag_mode": rag_mode,
         "rag_context": rag_context,
         "full_text": full_text,
+        "llm_config": _extract_llm_config(data),
+        "hitl_enabled": _extract_hitl_enabled(data),
     }
 
 
@@ -374,6 +397,8 @@ def chat_message():
                 session_id=session_id,
                 log_prompt=LOG_LLM_PROMPT or include_tool_debug,
                 file_count=len(file_ids),
+                llm_config=ctx["llm_config"],
+                hitl_enabled=ctx["hitl_enabled"],
             )
 
         reply, msgs, hitl_pending = run_async(_invoke_chat(), run_key=session_id)
@@ -404,6 +429,7 @@ def chat_message():
             reply,
             mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
         )
+        _maybe_schedule_auto_title(session_id)
         return jsonify(
             _build_chat_success_payload(
                 session_id,
@@ -473,6 +499,8 @@ def chat_message_stream():
             session_id=session_id,
             log_prompt=LOG_LLM_PROMPT or include_tool_debug,
             file_count=len(file_ids),
+            llm_config=ctx["llm_config"],
+            hitl_enabled=ctx["hitl_enabled"],
         ):
             yield event
 
@@ -500,6 +528,7 @@ def chat_message_stream():
             reply,
             mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
         )
+        _maybe_schedule_auto_title(session_id)
         return [
             build_stream_done_payload(
                 session_id=session_id,
@@ -574,6 +603,8 @@ def chat_hitl_resume():
         session_id, rag_query, file_ids=file_ids or None, mode=rag_mode
     )
     agent_system_prompt = chat_agent_prompt_with_rag(rag_context)
+    llm_config = _extract_llm_config(data)
+    hitl_enabled = _extract_hitl_enabled(data)
     try:
         reply, msgs, hitl_pending = run_async(
             run_agent_hitl_resume(
@@ -581,6 +612,8 @@ def chat_hitl_resume():
                 action,
                 rag_context=rag_context,
                 log_prompt=LOG_LLM_PROMPT or include_tool_debug,
+                llm_config=llm_config,
+                hitl_enabled=hitl_enabled,
             ),
             run_key=session_id,
         )
@@ -610,6 +643,7 @@ def chat_hitl_resume():
             reply,
             mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
         )
+        _maybe_schedule_auto_title(session_id)
         return jsonify(
             _build_chat_success_payload(
                 session_id,
@@ -644,12 +678,16 @@ def chat_hitl_resume_stream():
         session_id, rag_query, file_ids=file_ids or None, mode=rag_mode
     )
     agent_system_prompt = chat_agent_prompt_with_rag(rag_context)
+    llm_config = _extract_llm_config(data)
+    hitl_enabled = _extract_hitl_enabled(data)
 
     async_gen = stream_agent_hitl_resume(
         session_id,
         action,
         rag_context=rag_context,
         log_prompt=LOG_LLM_PROMPT or include_tool_debug,
+        llm_config=llm_config,
+        hitl_enabled=hitl_enabled,
     )
 
     def on_result(event: dict):
@@ -674,6 +712,7 @@ def chat_hitl_resume_stream():
             reply,
             mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
         )
+        _maybe_schedule_auto_title(session_id)
         return [
             build_stream_done_payload(
                 session_id=session_id,

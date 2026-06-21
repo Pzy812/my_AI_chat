@@ -262,14 +262,30 @@ def fetch_messages_range(session_id: str, offset: int, limit: int) -> list[dict[
     return _parse_messages(raw)
 
 
-def set_session_title(session_id: str, title: str) -> None:
+def get_session_meta(session_id: str) -> dict[str, Any]:
+    sid = _norm_sid(session_id)
+    h = get_redis().hgetall(f"{REDIS_SESSION_META_PREFIX}{sid}") or {}
+    return {
+        "title": h.get("title") or sid,
+        "title_manual": h.get("title_manual") in ("1", "true", "True"),
+        "auto_title_done": h.get("auto_title_done") in ("1", "true", "True"),
+    }
+
+
+def set_session_title(session_id: str, title: str, *, manual: bool = True) -> None:
     sid = _norm_sid(session_id)
     r = get_redis()
     now = time.time()
-    r.hset(
-        f"{REDIS_SESSION_META_PREFIX}{sid}",
-        mapping={"title": title.strip() or sid, "updated": str(now)},
-    )
+    mapping: dict[str, str] = {
+        "title": (title or sid).strip() or sid,
+        "updated": str(now),
+    }
+    if manual:
+        mapping["title_manual"] = "1"
+    else:
+        mapping["auto_title_done"] = "1"
+        mapping["title_manual"] = "0"
+    r.hset(f"{REDIS_SESSION_META_PREFIX}{sid}", mapping=mapping)
     r.zadd(REDIS_SESSION_ZSET, {sid: now})
 
 

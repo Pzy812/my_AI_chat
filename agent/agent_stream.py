@@ -40,6 +40,7 @@ from chat.chat_helpers import (
 )
 from agent.hitl_tools import normalize_interrupts
 from llm.llm_zhipu import make_chat_llm
+from llm.model_config import make_llm_from_config
 import app_mcp.mcp_lifecycle as mcp_lifecycle
 
 _STREAM_CONTENT_CAP = 12_000
@@ -334,13 +335,14 @@ async def _iter_llm_only_events(
     *,
     session_id: str,
     log_prompt: bool,
+    llm_config: dict | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     yield {
         "type": "step",
         "phase": "status",
         "content": "MCP 不可用，使用纯 LLM 模式（无工具调用）…",
     }
-    llm = make_chat_llm()
+    llm = make_llm_from_config(llm_config)
     prompt = chat_agent_prompt_with_rag(rag_context) + CHAT_OFFLINE_PROMPT_SUFFIX
     if log_prompt:
         log_llm_system_prompt(
@@ -378,13 +380,19 @@ async def stream_agent_with_history(
     session_id: str = "",
     log_prompt: bool = False,
     file_count: int = 0,
+    llm_config: dict | None = None,
+    hitl_enabled: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """流式 ReAct；末尾 yield _agent_result（由路由转为 done / hitl_pending）。"""
     from core.app_utils import format_error
 
     if not await _ensure_mcp_ready():
         async for ev in _iter_llm_only_events(
-            lc_messages, rag_context, session_id=session_id, log_prompt=log_prompt
+            lc_messages,
+            rag_context,
+            session_id=session_id,
+            log_prompt=log_prompt,
+            llm_config=llm_config,
         ):
             yield ev
         return
@@ -397,10 +405,10 @@ async def stream_agent_with_history(
                 session_id=session_id,
                 rag_context=rag_context,
             )
-        llm = make_chat_llm()
+        llm = make_llm_from_config(llm_config)
         async with open_mcp_transport() as (r, w, _):
             async with ClientSession(r, w) as session:
-                tools = await langchain_tools_from_mcp_session(session)
+                tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
                 agent = await _create_agent(llm, tools, rag_context)
                 config, input_data = await _prepare_invoke(
                     session_id=session_id,
@@ -439,7 +447,11 @@ async def stream_agent_with_history(
             "content": f"Agent+MCP 失败，已降级：{format_error(e)}",
         }
         async for ev in _iter_llm_only_events(
-            lc_messages, rag_context, session_id=session_id, log_prompt=log_prompt
+            lc_messages,
+            rag_context,
+            session_id=session_id,
+            log_prompt=log_prompt,
+            llm_config=llm_config,
         ):
             yield ev
 
@@ -450,13 +462,15 @@ async def stream_agent_hitl_resume(
     *,
     rag_context: str | None = None,
     log_prompt: bool = False,
+    llm_config: dict | None = None,
+    hitl_enabled: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     if not await _ensure_mcp_ready():
         raise RuntimeError("MCP 未就绪，无法恢复 HITL 会话")
-    from agent.agent_service import hitl_available
+    from agent.agent_service import effective_hitl_enabled
 
-    if not hitl_available():
-        raise RuntimeError("HITL 未启用或未配置 Postgres Checkpointer")
+    if not effective_hitl_enabled(hitl_enabled):
+        raise RuntimeError("Human-in-the-Loop 未启用或已在设置中关闭")
 
     if log_prompt:
         log_llm_system_prompt(
@@ -465,10 +479,10 @@ async def stream_agent_hitl_resume(
             session_id=session_id,
             rag_context=rag_context,
         )
-    llm = make_chat_llm()
+    llm = make_llm_from_config(llm_config)
     async with open_mcp_transport() as (r, w, _):
         async with ClientSession(r, w) as session:
-            tools = await langchain_tools_from_mcp_session(session)
+            tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
             agent = await _create_agent(llm, tools, rag_context)
             config, input_data = await _prepare_invoke(
                 session_id=session_id,
