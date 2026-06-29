@@ -17,6 +17,7 @@ GATHER_TOOLS: frozenset[str] = frozenset(
     {
         "get_current_time",
         "web_search",
+        "web_search_batch",
         "get_wechat_messages",
         "list_local_directory",
         "glob_local_files",
@@ -65,6 +66,7 @@ class TaskHarnessState(TypedDict):
     task_phase: NotRequired[TaskPhase]
     harness_enabled: NotRequired[bool]
     completed_steps: NotRequired[list[str]]
+    step_checklist: NotRequired[list[dict]]
     task_status: NotRequired[TaskStatus]
 
 
@@ -91,5 +93,6 @@ def default_task_fields() -> dict:
         "task_phase": "gather",
         "harness_enabled": False,
         "completed_steps": [],
+        "step_checklist": [],
         "task_status": "executing",
     }

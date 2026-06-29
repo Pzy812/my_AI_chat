@@ -132,11 +132,20 @@ def excel_basename_from_export_tool(content: str) -> str | None:
     return name
 
 
+def _messages_since_last_human(messages: list) -> list:
+    """只保留最近一条用户消息之后的 Agent 消息（当前轮次）。"""
+    start = 0
+    for i, m in enumerate(messages):
+        if isinstance(m, HumanMessage):
+            start = i + 1
+    return messages[start:]
+
+
 def extract_mcp_attachments_from_messages(messages: list) -> list[dict]:
     """从本轮 ToolMessage 提取 format_pretty_table / export_to_excel，供前端展示与下载。"""
     out: list[dict] = []
     tbl_idx = 0
-    for m in messages:
+    for m in _messages_since_last_human(messages):
         if not isinstance(m, ToolMessage):
             continue
         name = m.name or ""
@@ -169,7 +178,7 @@ def extract_mcp_attachments_from_messages(messages: list) -> list[dict]:
 def build_tool_debug_from_messages(messages: list) -> dict:
     """汇总本轮 MCP 工具返回，便于区分模型选错工具与底层执行失败。"""
     items: list[dict] = []
-    for m in messages:
+    for m in _messages_since_last_human(messages):
         if isinstance(m, ToolMessage):
             c = m.content
             if not isinstance(c, str):

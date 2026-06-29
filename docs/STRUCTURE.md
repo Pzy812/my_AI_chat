@@ -1,5 +1,7 @@
 # 项目结构与启动说明
 
+> 快速上手见 [README.md](../README.md) · Task Harness 设计见 [TASK_HARNESS.md](./TASK_HARNESS.md)
+
 ## 目录概览
 
 ```
@@ -68,8 +70,15 @@
 | `agent_stream.py` | Agent 流式输出（SSE）与 HITL 中断恢复 |
 | `agent_state.py` | Agent 运行状态与 HITL 中断合成 |
 | `agent_checkpointer.py` | LangGraph Postgres Checkpointer（会话级 Agent 状态持久化） |
+| `harness.py` | **Task Harness**：pre/post hooks、阶段 gate、重锚定、续跑持久化 |
+| `planner.py` | 复杂任务检测 + LLM 步骤规划 |
+| `task_state.py` | Harness 状态 Schema、gather/process/deliver 阶段与工具白名单 |
+| `task_checklist.py` | 子任务 checklist、「继续」识别、自动续跑 nudge |
+| `task_continue.py` | 外发交付检测、重复外发拦截 |
 | `hitl_config.py` | 需用户确认的工具名与前端展示文案 |
 | `hitl_tools.py` | HITL 工具包装与中断解析 |
+
+> Task Harness 设计原理见 [TASK_HARNESS.md](./TASK_HARNESS.md)
 
 ### `chat/` — 聊天存储
 
@@ -142,7 +151,7 @@
 | `data/` | 静态 JSON 等（如 `interview_data.json`） |
 | `scripts/` | `install_doc_deps.bat`（文档解析依赖）、`testwx.py`（微信测试）、`my_neo4j.py`（Neo4j 示例） |
 | `lib/` | 第三方资源（如 `postgresql-42.7.11.jar`） |
-| `docs/` | 项目文档 |
+| `docs/` | 项目文档（[STRUCTURE.md](./STRUCTURE.md)、[TASK_HARNESS.md](./TASK_HARNESS.md)） |
 
 ---
 
@@ -162,15 +171,19 @@
 
 **启动步骤**
 
-```
+```powershell
+# 0. 复制环境变量模板并填入 ZHIPUAI_API_KEY
+copy .env.example .env
+
 # 1.（可选）安装文档解析依赖
 scripts\install_doc_deps.bat
 
-# 2. 启动 MCP 工具服务（可省略，app.py 会自动尝试拉起）
-python mcp_server.py
+# 2. 一键启动（推荐；MCP 未运行时 app.py 会自动尝试拉起）
+scripts\start.bat
 
-# 3. 启动 Flask Web（默认 http://0.0.0.0:5001）
-python app.py
+# 或手动分步：
+# python mcp_server.py
+# python app.py
 ```
 
 **`app.py` 内部启动顺序**
@@ -254,7 +267,7 @@ sequenceDiagram
 | `NEO4J_URI` | — | Neo4j 图谱（GraphRAG） |
 | `TAVILY_API_KEY` | — | 联网搜索（MCP web_search） |
 
-完整配置见 `config/app_config.py` 与 `.env` 示例。
+完整配置见 `config/app_config.py` 与 [`.env.example`](../.env.example)。
 
 ---
 

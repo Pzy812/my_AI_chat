@@ -8,20 +8,28 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langgraph.types import Command
 from mcp import ClientSession
 
-from app_mcp.mcp_http_client import open_mcp_transport
+from app_mcp.mcp_http_client import (
+    is_mcp_transport_error,
+    open_ephemeral_mcp_session,
+    reconnect_mcp_session,
+    recover_mcp_server_async,
+)
 
 from agent.harness import (
-    build_initial_agent_state,
+    build_stuck_give_up_nudge,
     format_reanchor_summary,
+    get_abandoned_tools,
+    is_phase_gate_abandon_message,
     merge_task_state,
+    persist_task_harness_meta,
+    prepare_agent_invoke,
     sync_run_context_from_values,
     task_harness_event_payload,
 )
 from agent.planner import format_plan_for_display
-from config.app_config import AGENT_RECURSION_LIMIT
+from config.app_config import logger
 from agent.agent_service import (
     CHAT_OFFLINE_PROMPT_SUFFIX,
     chat_agent_prompt_with_rag,
@@ -31,19 +39,19 @@ from agent.agent_service import (
     _create_agent,
 )
 from agent.agent_state import finalize_agent_run
-from agent.task_continue import MAX_DELIVER_CONTINUATIONS, should_continue_deliver
-from config.app_config import AGENT_RECURSION_LIMIT, logger
+from agent.task_checklist import MAX_TASK_CONTINUATIONS, should_continue_task
 from chat.chat_helpers import (
     build_tool_debug_from_messages,
     extract_mcp_attachments_from_messages,
     last_assistant_text,
 )
 from agent.hitl_tools import normalize_interrupts
-from llm.llm_zhipu import make_chat_llm
 from llm.model_config import make_llm_from_config
 import app_mcp.mcp_lifecycle as mcp_lifecycle
 
 _STREAM_CONTENT_CAP = 12_000
+# 连续收到「工具已放弃」类 observation 后强制停止重试
+_MAX_CONSECUTIVE_PHASE_ABANDON = 2
 
 
 _STREAM_THINK_TAG_RE = re.compile(
@@ -188,23 +196,14 @@ async def _prepare_invoke(
     fresh_thread: bool,
     file_count: int = 0,
 ) -> tuple[dict, Any]:
-    from agent.agent_checkpointer import get_checkpointer, reset_agent_thread
-
-    checkpointer = get_checkpointer()
-    config = {
-        "configurable": {"thread_id": session_id},
-        "recursion_limit": AGENT_RECURSION_LIMIT,
-    } if checkpointer else {"recursion_limit": AGENT_RECURSION_LIMIT}
-    if checkpointer and fresh_thread and resume_action is None:
-        await reset_agent_thread(session_id)
-    if resume_action is not None:
-        return config, Command(resume={"action": resume_action})
-    input_state = await build_initial_agent_state(
-        lc_messages or [],
+    config, input_data, _ = await prepare_agent_invoke(
         session_id=session_id,
+        lc_messages=lc_messages,
+        resume_action=resume_action,
+        fresh_thread=fresh_thread,
         file_count=file_count,
     )
-    return config, input_state
+    return config, input_data
 
 
 def _state_from_chain_event(event: dict[str, Any]) -> dict[str, Any] | None:
@@ -231,6 +230,7 @@ def _harness_state_signature(payload: dict[str, Any]) -> str:
             "task_phase": payload.get("task_phase"),
             "harness_enabled": payload.get("harness_enabled"),
             "completed_steps": payload.get("completed_steps"),
+            "step_checklist": payload.get("step_checklist"),
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -266,6 +266,7 @@ async def _iter_react_agent_events(
                 "task_phase",
                 "harness_enabled",
                 "completed_steps",
+                "step_checklist",
                 "task_status",
             )
             if k in input_data
@@ -276,12 +277,38 @@ async def _iter_react_agent_events(
     msgs: list = []
     hitl: list[dict] | None = None
     last_state: dict[str, Any] = dict(task_baseline)
+    stuck_recovery_used = False
 
     while True:
         last_state = dict(task_baseline) if continuations == 0 else last_state
         last_harness_sig: str | None = None
         agent_started = False
+        stuck_give_up_nudge: str | None = None
+        consecutive_phase_abandon = 0
+        thread_id = str((config.get("configurable") or {}).get("thread_id") or "default")
         async for event in agent.astream_events(current_input, config=config, version="v2"):
+            if event.get("event") == "on_tool_end":
+                output = (event.get("data") or {}).get("output")
+                if hasattr(output, "content"):
+                    obs_text = _message_content_text(output.content)
+                else:
+                    obs_text = _message_content_text(output)
+                if is_phase_gate_abandon_message(obs_text):
+                    consecutive_phase_abandon += 1
+                else:
+                    consecutive_phase_abandon = 0
+                if consecutive_phase_abandon >= _MAX_CONSECUTIVE_PHASE_ABANDON:
+                    abandoned = get_abandoned_tools(thread_id)
+                    stuck_give_up_nudge = build_stuck_give_up_nudge(abandoned)
+                    yield {
+                        "type": "step",
+                        "phase": "status",
+                        "content": (
+                            "检测到工具因阶段限制反复失败，停止重试，"
+                            "改为直接向用户说明…"
+                        ),
+                    }
+                    break
             chunk_state = _state_from_chain_event(event)
             if chunk_state:
                 merged = merge_task_state(last_state, chunk_state)
@@ -291,6 +318,10 @@ async def _iter_react_agent_events(
                     sig = _harness_state_signature(harness_ev)
                     if sig != last_harness_sig:
                         last_harness_sig = sig
+                        persist_task_harness_meta(
+                            str((config.get("configurable") or {}).get("thread_id") or "default"),
+                            merged,
+                        )
                         yield harness_ev
             for step in _parse_astream_event(event):
                 if step.get("phase") == "thought":
@@ -302,29 +333,55 @@ async def _iter_react_agent_events(
                         continue
                     agent_started = True
                 yield step
+        if stuck_give_up_nudge:
+            if stuck_recovery_used:
+                break
+            stuck_recovery_used = True
+            current_input = {"messages": [HumanMessage(content=stuck_give_up_nudge)]}
+            continue
         reply, msgs, hitl = await _finalize_agent(
             agent, config, collected=last_state or None
         )
         if hitl:
             break
-        nudge = should_continue_deliver(last_state, msgs, reply)
-        if not nudge or continuations >= MAX_DELIVER_CONTINUATIONS:
+        nudge = should_continue_task(last_state, msgs, reply)
+        if not nudge or continuations >= MAX_TASK_CONTINUATIONS:
             break
         continuations += 1
         if last_state.get("harness_enabled"):
-            last_state = {**last_state, "task_phase": "deliver"}
+            plan = list(last_state.get("plan") or [])
+            plan_index = int(last_state.get("plan_index") or 0)
+            from agent.harness import compute_task_phase
+
+            last_state = {
+                **last_state,
+                "task_phase": compute_task_phase(
+                    plan, plan_index, harness_enabled=True
+                ),
+            }
             from agent.harness import sync_run_context_from_values
 
             thread_id = str((config.get("configurable") or {}).get("thread_id") or "default")
             sync_run_context_from_values(thread_id, last_state)
+        plan = list(last_state.get("plan") or [])
+        plan_index = int(last_state.get("plan_index") or 0)
         yield {
             "type": "step",
             "phase": "status",
-            "content": "检测到外发/交付步骤尚未执行，Agent 继续运行…",
+            "content": (
+                f"检测到任务尚未全部完成（{min(plan_index + 1, len(plan))}/{len(plan)}），"
+                "Agent 自动续跑…"
+                if plan
+                else "检测到外发/交付步骤尚未执行，Agent 继续运行…"
+            ),
         }
         current_input = {"messages": [HumanMessage(content=nudge)]}
 
     if last_state.get("user_goal") or last_state.get("harness_enabled"):
+        persist_task_harness_meta(
+            str((config.get("configurable") or {}).get("thread_id") or "default"),
+            last_state,
+        )
         yield task_harness_event_payload(last_state)
     yield {"type": "_agent_result", "reply": reply, "messages": msgs, "hitl": hitl}
 
@@ -373,6 +430,146 @@ async def _ensure_mcp_ready() -> bool:
     return await mcp_lifecycle.ensure_mcp_server_started_async()
 
 
+def _plan_pre_events(input_data: dict[str, Any]) -> list[dict[str, Any]]:
+    pre_events: list[dict[str, Any]] = [task_harness_event_payload(input_data)]
+    if input_data.get("harness_enabled"):
+        plan = input_data.get("plan") or []
+        if plan:
+            pre_events.append(
+                {
+                    "type": "step",
+                    "phase": "status",
+                    "content": format_plan_for_display(
+                        plan, plan_index=int(input_data.get("plan_index") or 0)
+                    ),
+                }
+            )
+    return pre_events
+
+
+async def _hitl_resume_pre_events(
+    agent,
+    config: dict,
+    session_id: str,
+    action: str,
+) -> list[dict[str, Any]]:
+    pre_events: list[dict[str, Any]] = [
+        {
+            "type": "step",
+            "phase": "status",
+            "content": "已" + ("确认" if action == "approve" else "取消") + "，继续 Agent…",
+        }
+    ]
+    try:
+        snap = await agent.aget_state(config)
+        values = dict(snap.values) if snap and snap.values else {}
+        if values.get("harness_enabled"):
+            sync_run_context_from_values(session_id, values)
+        pre_events.append(task_harness_event_payload(values))
+        if values.get("harness_enabled"):
+            pre_events.append(
+                {
+                    "type": "step",
+                    "phase": "status",
+                    "content": format_reanchor_summary(values),
+                }
+            )
+    except Exception:
+        pass
+    return pre_events
+
+
+async def _stream_react_on_session(
+    session: ClientSession,
+    *,
+    session_id: str,
+    lc_messages: list | None,
+    resume_action: str | None,
+    fresh_thread: bool,
+    file_count: int,
+    rag_context: str | None,
+    llm_config: dict | None,
+    hitl_enabled: bool,
+) -> AsyncIterator[dict[str, Any]]:
+    llm = make_llm_from_config(llm_config)
+    tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
+    agent = await _create_agent(llm, tools, rag_context)
+    config, input_data = await _prepare_invoke(
+        session_id=session_id,
+        lc_messages=lc_messages,
+        resume_action=resume_action,
+        fresh_thread=fresh_thread,
+        file_count=file_count,
+    )
+    if resume_action is not None:
+        pre_events = await _hitl_resume_pre_events(agent, config, session_id, resume_action)
+    elif isinstance(input_data, dict):
+        pre_events = _plan_pre_events(input_data)
+    else:
+        pre_events = []
+    async for ev in _iter_react_agent_events(
+        agent, input_data, config, pre_events=pre_events
+    ):
+        yield ev
+
+
+async def _stream_react_with_mcp_retry(
+    *,
+    session_id: str,
+    lc_messages: list | None,
+    resume_action: str | None,
+    fresh_thread: bool,
+    file_count: int,
+    rag_context: str | None,
+    llm_config: dict | None,
+    hitl_enabled: bool,
+) -> AsyncIterator[dict[str, Any]]:
+    """流式 Agent；MCP SSE 异常时重连客户端，必要时重启 MCP 服务。"""
+    last_err: BaseException | None = None
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            async with open_ephemeral_mcp_session() as session:
+                async for ev in _stream_react_on_session(
+                    session,
+                    session_id=session_id,
+                    lc_messages=lc_messages,
+                    resume_action=resume_action,
+                    fresh_thread=fresh_thread,
+                    file_count=file_count,
+                    rag_context=rag_context,
+                    llm_config=llm_config,
+                    hitl_enabled=hitl_enabled,
+                ):
+                    yield ev
+            return
+        except BaseException as e:
+            last_err = e
+            if attempt + 1 >= max_attempts or not is_mcp_transport_error(e):
+                raise
+            logger.warning(
+                "Agent 流式 MCP 失败，准备重试 (%s/%s): %s",
+                attempt + 1,
+                max_attempts,
+                e,
+            )
+            yield {
+                "type": "step",
+                "phase": "status",
+                "content": (
+                    "MCP 连接异常，正在重试…"
+                    if attempt == 0
+                    else "MCP 仍不可用，正在重启 MCP 服务并重试…"
+                ),
+            }
+            if attempt >= 1 and not await recover_mcp_server_async():
+                raise RuntimeError(
+                    "MCP 重启失败，请手动运行 python mcp_server.py"
+                ) from e
+    if last_err is not None:
+        raise last_err
+
+
 async def stream_agent_with_history(
     lc_messages: list,
     rag_context: str | None = None,
@@ -397,6 +594,16 @@ async def stream_agent_with_history(
             yield ev
         return
 
+    react_gen = _stream_react_with_mcp_retry(
+        session_id=session_id,
+        lc_messages=lc_messages,
+        resume_action=None,
+        fresh_thread=True,
+        file_count=file_count,
+        rag_context=rag_context,
+        llm_config=llm_config,
+        hitl_enabled=hitl_enabled,
+    )
     try:
         if log_prompt:
             log_llm_system_prompt(
@@ -405,37 +612,8 @@ async def stream_agent_with_history(
                 session_id=session_id,
                 rag_context=rag_context,
             )
-        llm = make_llm_from_config(llm_config)
-        async with open_mcp_transport() as (r, w, _):
-            async with ClientSession(r, w) as session:
-                tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
-                agent = await _create_agent(llm, tools, rag_context)
-                config, input_data = await _prepare_invoke(
-                    session_id=session_id,
-                    lc_messages=lc_messages,
-                    resume_action=None,
-                    fresh_thread=True,
-                    file_count=file_count,
-                )
-                pre_events: list[dict[str, Any]] = []
-                if isinstance(input_data, dict):
-                    pre_events.append(task_harness_event_payload(input_data))
-                    if input_data.get("harness_enabled"):
-                        plan = input_data.get("plan") or []
-                        if plan:
-                            pre_events.append(
-                                {
-                                    "type": "step",
-                                    "phase": "status",
-                                    "content": format_plan_for_display(
-                                        plan, plan_index=int(input_data.get("plan_index") or 0)
-                                    ),
-                                }
-                            )
-                async for ev in _iter_react_agent_events(
-                    agent, input_data, config, pre_events=pre_events
-                ):
-                    yield ev
+        async for ev in react_gen:
+            yield ev
     except BaseException as e:
         logger.warning(
             "Agent 流式调用失败，降级纯 LLM：%s",
@@ -454,6 +632,11 @@ async def stream_agent_with_history(
             llm_config=llm_config,
         ):
             yield ev
+    finally:
+        try:
+            await react_gen.aclose()
+        except BaseException:
+            pass
 
 
 async def stream_agent_hitl_resume(
@@ -479,44 +662,29 @@ async def stream_agent_hitl_resume(
             session_id=session_id,
             rag_context=rag_context,
         )
-    llm = make_llm_from_config(llm_config)
-    async with open_mcp_transport() as (r, w, _):
-        async with ClientSession(r, w) as session:
-            tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
-            agent = await _create_agent(llm, tools, rag_context)
-            config, input_data = await _prepare_invoke(
-                session_id=session_id,
-                lc_messages=None,
-                resume_action=action,
-                fresh_thread=False,
-            )
-            pre_events: list[dict[str, Any]] = [
-                {
-                    "type": "step",
-                    "phase": "status",
-                    "content": "已" + ("确认" if action == "approve" else "取消") + "，继续 Agent…",
-                }
-            ]
-            try:
-                snap = await agent.aget_state(config)
-                values = dict(snap.values) if snap and snap.values else {}
-                if values.get("harness_enabled"):
-                    sync_run_context_from_values(session_id, values)
-                pre_events.append(task_harness_event_payload(values))
-                if values.get("harness_enabled"):
-                    pre_events.append(
-                        {
-                            "type": "step",
-                            "phase": "status",
-                            "content": format_reanchor_summary(values),
-                        }
-                    )
-            except Exception:
-                pass
-            async for ev in _iter_react_agent_events(
-                agent, input_data, config, pre_events=pre_events
-            ):
-                yield ev
+    try:
+        async for ev in _stream_react_with_mcp_retry(
+            session_id=session_id,
+            lc_messages=None,
+            resume_action=action,
+            fresh_thread=False,
+            file_count=0,
+            rag_context=rag_context,
+            llm_config=llm_config,
+            hitl_enabled=hitl_enabled,
+        ):
+            yield ev
+    except BaseException as e:
+        from core.app_utils import format_error
+
+        logger.error("HITL 流式恢复失败: %s", format_error(e))
+        yield {
+            "type": "_agent_result",
+            "reply": None,
+            "messages": [],
+            "hitl": None,
+            "_error": f"HITL 恢复失败：{format_error(e)}（请刷新后重试，或重启 app.py）",
+        }
 
 
 def build_stream_done_payload(

@@ -4,19 +4,21 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.types import Command
 from mcp import ClientSession, types
 
-from app_mcp.mcp_http_client import open_mcp_transport
-from agent.agent_checkpointer import get_checkpointer, reset_agent_thread
+from app_mcp.mcp_http_client import get_mcp_session, run_with_mcp_retry
+from agent.agent_checkpointer import get_checkpointer
 from config.app_config import HITL_ENABLED, LOG_LLM_PROMPT_MAX, logger
 from chat.chat_helpers import last_assistant_text, messages_have_pending_tool_calls
 from agent.hitl_tools import normalize_interrupts, wrap_tools_with_hitl
-from agent.task_continue import MAX_DELIVER_CONTINUATIONS, should_continue_deliver
 from agent.harness import (
     TASK_DISCIPLINE_PROMPT,
-    build_initial_agent_state,
     make_post_model_hook,
     make_pre_model_hook,
+    persist_task_harness_meta,
+    prepare_agent_invoke,
     wrap_tools_with_phase_gate,
+    compute_task_phase,
 )
+from agent.task_checklist import MAX_TASK_CONTINUATIONS, should_continue_task
 from agent.task_state import TaskHarnessState
 from llm.llm_zhipu import make_chat_llm
 from llm.model_config import make_llm_from_config
@@ -35,6 +37,7 @@ CHAT_AGENT_PROMPT = (
     "涉及时效、新闻、股价、黄金/汇率/商品价格、天气、政策等需要联网核实时，必须先调用 web_search（系统会以本机时间为检索基准；也可先 get_current_time 再搜索），再基于搜索结果回答。\n"
     "如果 web_search 工具可用，不要回答“没有实时查询能力”或让用户自行去网站查询。\n"
     "用户要表格展示时用 format_pretty_table；明确要求导出 / 保存为 Excel 时用 export_to_excel，并传入表头 headers 与二维 rows（表格/Excel 执行前需用户确认）。\n"
+    "需要同时搜索多个独立主题时，Gather 阶段优先使用 web_search_batch(queries=[...]) 并行检索，不要串行多次 web_search。\n"
     "纯聊天可直接回答。"
 ) + TASK_DISCIPLINE_PROMPT
 
@@ -109,10 +112,10 @@ async def langchain_tools_from_mcp_session(
     *,
     hitl_enabled: bool = True,
 ):
-    """拉全量 MCP 工具（分页 list_tools，避免只读到第一页）。"""
+    """拉全量 MCP 工具（分页 list_tools，避免只读到第一页）。session 须已由 McpSessionManager 初始化。"""
+    from langchain_core.tools import StructuredTool
     from langchain_mcp.toolkit import MCPTool
 
-    await session.initialize()
     defs: list = []
     page = await session.list_tools()
     defs.extend(page.tools)
@@ -130,10 +133,61 @@ async def langchain_tools_from_mcp_session(
         )
         for t in defs
     ]
+    tools = _append_web_search_batch_tool(tools)
     tools = wrap_tools_with_phase_gate(
         wrap_tools_with_hitl(tools, enabled=effective_hitl_enabled(hitl_enabled))
     )
     return tools
+
+
+def _append_web_search_batch_tool(tools: list) -> list:
+    """Gather 阶段：并行执行多个 web_search。"""
+    import asyncio
+
+    from langchain_core.tools import StructuredTool
+    from pydantic import BaseModel, Field
+
+    web_tool = next((t for t in tools if getattr(t, "name", "") == "web_search"), None)
+    if web_tool is None:
+        return tools
+
+    class WebSearchBatchInput(BaseModel):
+        queries: list[str] = Field(description="要并行搜索的关键词列表，最多 6 条")
+        max_results: int = Field(default=5, description="每条搜索返回的结果数")
+
+    async def _batch_search(queries: list[str], max_results: int = 5) -> str:
+        qs = [str(q).strip() for q in (queries or []) if str(q).strip()]
+        if not qs:
+            return "请提供至少一个搜索 query"
+        qs = qs[:6]
+        if len(qs) == 1:
+            result = await web_tool.ainvoke({"query": qs[0], "max_results": max_results})
+            return result if isinstance(result, str) else str(result)
+
+        async def _one(query: str) -> str:
+            try:
+                result = await web_tool.ainvoke(
+                    {"query": query, "max_results": max_results}
+                )
+                body = result if isinstance(result, str) else str(result)
+                return f"### 搜索：{query}\n{body}"
+            except Exception as e:
+                return f"### 搜索：{query}\n失败：{e}"
+
+        parts = await asyncio.gather(*[_one(q) for q in qs])
+        return "\n\n".join(parts)
+
+    batch_tool = StructuredTool.from_function(
+        coroutine=_batch_search,
+        name="web_search_batch",
+        description=(
+            "并行执行多个 web_search（Gather 阶段专用）。"
+            "当需要同时检索多个独立主题（如天气+论文+新闻）时使用，"
+            "传入 queries 列表即可，比多次串行 web_search 更快。"
+        ),
+        args_schema=WebSearchBatchInput,
+    )
+    return [*tools, batch_tool]
 
 
 async def _create_agent(llm, tools: list, rag_context: str | None):
@@ -164,17 +218,15 @@ async def _invoke_agent(
     file_count: int = 0,
 ) -> tuple[str | None, list, list[dict] | None]:
     """返回 (reply_text|None, messages, hitl_pending|None)。"""
-    from config.app_config import AGENT_RECURSION_LIMIT
-
-    checkpointer = get_checkpointer()
-    config = {
-        "configurable": {"thread_id": session_id},
-        "recursion_limit": AGENT_RECURSION_LIMIT,
-    } if checkpointer else {"recursion_limit": AGENT_RECURSION_LIMIT}
-    if checkpointer and fresh_thread and resume_action is None:
-        await reset_agent_thread(session_id)
+    config, input_data, _ = await prepare_agent_invoke(
+        session_id=session_id,
+        lc_messages=lc_messages,
+        resume_action=resume_action,
+        fresh_thread=fresh_thread,
+        file_count=file_count,
+    )
     if resume_action is not None:
-        if checkpointer:
+        if get_checkpointer():
             try:
                 from agent.harness import sync_run_context_from_values
 
@@ -183,16 +235,9 @@ async def _invoke_agent(
                     sync_run_context_from_values(session_id, dict(snap.values))
             except Exception:
                 pass
-        state = await agent.ainvoke(
-            Command(resume={"action": resume_action}), config=config
-        )
+        state = await agent.ainvoke(input_data, config=config)
     else:
-        input_state = await build_initial_agent_state(
-            lc_messages or [],
-            session_id=session_id,
-            file_count=file_count,
-        )
-        state = await agent.ainvoke(input_state, config=config)
+        state = await agent.ainvoke(input_data, config=config)
 
     task_state = {
         k: state.get(k)
@@ -203,6 +248,7 @@ async def _invoke_agent(
             "task_phase",
             "harness_enabled",
             "completed_steps",
+            "step_checklist",
             "task_status",
         )
         if k in state
@@ -223,12 +269,18 @@ async def _invoke_agent(
         if pending:
             return None, msgs, None
         reply = last_assistant_text(msgs)
-        nudge = should_continue_deliver(task_state, msgs, reply)
-        if not nudge or continuations >= MAX_DELIVER_CONTINUATIONS:
+        nudge = should_continue_task(task_state, msgs, reply)
+        if not nudge or continuations >= MAX_TASK_CONTINUATIONS:
+            persist_task_harness_meta(session_id, task_state)
             return reply, msgs, None
         continuations += 1
         if task_state.get("harness_enabled"):
-            task_state = {**task_state, "task_phase": "deliver"}
+            plan = list(task_state.get("plan") or [])
+            plan_index = int(task_state.get("plan_index") or 0)
+            task_state = {
+                **task_state,
+                "task_phase": compute_task_phase(plan, plan_index, harness_enabled=True),
+            }
             from agent.harness import sync_run_context_from_values
 
             sync_run_context_from_values(session_id, task_state)
@@ -244,6 +296,7 @@ async def _invoke_agent(
                 "task_phase",
                 "harness_enabled",
                 "completed_steps",
+                "step_checklist",
                 "task_status",
             )
             if k in state
@@ -280,20 +333,22 @@ async def run_agent(prompt: str) -> str:
             f"MCP 未在 {MCP_HOST}:{MCP_PORT} 就绪，请另开终端运行: python mcp_server.py"
         )
     llm = make_chat_llm()
-    async with open_mcp_transport() as (r, w, _):
-        async with ClientSession(r, w) as session:
-            tools = await langchain_tools_from_mcp_session(session)
-            checkpointer = get_checkpointer()
-            if checkpointer is not None:
-                agent = await _create_agent(llm, tools, None)
-                config = {"configurable": {"thread_id": "ai_run"}}
-                state = await agent.ainvoke(
-                    {"messages": [HumanMessage(content=prompt)]}, config=config
-                )
-            else:
-                agent = create_react_agent(llm, tools)
-                state = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
-            return last_assistant_text(state["messages"])
+
+    async def _run(session: ClientSession):
+        tools = await langchain_tools_from_mcp_session(session)
+        checkpointer = get_checkpointer()
+        if checkpointer is not None:
+            agent = await _create_agent(llm, tools, None)
+            config = {"configurable": {"thread_id": "ai_run"}}
+            state = await agent.ainvoke(
+                {"messages": [HumanMessage(content=prompt)]}, config=config
+            )
+        else:
+            agent = create_react_agent(llm, tools)
+            state = await agent.ainvoke({"messages": [HumanMessage(content=prompt)]})
+        return last_assistant_text(state["messages"])
+
+    return await run_with_mcp_retry(_run)
 
 
 async def run_chat_llm_only(
@@ -349,18 +404,20 @@ async def run_agent_with_history(
                 rag_context=rag_context,
             )
         llm = make_llm_from_config(llm_config)
-        async with open_mcp_transport() as (r, w, _):
-            async with ClientSession(r, w) as session:
-                tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
-                return await _invoke_react_agent(
-                    llm,
-                    tools,
-                    lc_messages,
-                    rag_context=rag_context,
-                    session_id=session_id,
-                    fresh_thread=True,
-                    file_count=file_count,
-                )
+
+        async def _run(session: ClientSession):
+            tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
+            return await _invoke_react_agent(
+                llm,
+                tools,
+                lc_messages,
+                rag_context=rag_context,
+                session_id=session_id,
+                fresh_thread=True,
+                file_count=file_count,
+            )
+
+        return await run_with_mcp_retry(_run)
     except BaseException as e:
         logger.warning(
             "Agent+MCP 调用失败，已降级为纯 LLM（本轮不会出现 ToolMessage）：%s",
@@ -397,46 +454,52 @@ async def run_agent_hitl_resume(
             rag_context=rag_context,
         )
     llm = make_llm_from_config(llm_config)
-    async with open_mcp_transport() as (r, w, _):
-        async with ClientSession(r, w) as session:
-            tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
-            return await _invoke_react_agent(
-                llm,
-                tools,
-                [],
-                rag_context=rag_context,
-                session_id=session_id,
-                resume_action=action,
-                fresh_thread=False,
-            )
+
+    async def _run(session: ClientSession):
+        tools = await langchain_tools_from_mcp_session(session, hitl_enabled=hitl_enabled)
+        return await _invoke_react_agent(
+            llm,
+            tools,
+            [],
+            rag_context=rag_context,
+            session_id=session_id,
+            resume_action=action,
+            fresh_thread=False,
+        )
+
+    return await run_with_mcp_retry(_run)
 
 
 async def send_wechat_agent(name: str, content: str) -> None:
     llm = make_chat_llm()
-    async with open_mcp_transport() as (r, w, _):
-        async with ClientSession(r, w) as session:
-            tools = await langchain_tools_from_mcp_session(session)
-            agent = create_react_agent(llm, tools)
-            await agent.ainvoke(
-                {
-                    "messages": [
-                        HumanMessage(
-                            content=(
-                                f"请使用 send_wechat_message 工具，"
-                                f"给微信好友【{name}】发送消息：{content}"
-                            )
+
+    async def _run(session: ClientSession):
+        tools = await langchain_tools_from_mcp_session(session)
+        agent = create_react_agent(llm, tools)
+        await agent.ainvoke(
+            {
+                "messages": [
+                    HumanMessage(
+                        content=(
+                            f"请使用 send_wechat_message 工具，"
+                            f"给微信好友【{name}】发送消息：{content}"
                         )
-                    ]
-                }
-            )
+                    )
+                ]
+            }
+        )
+
+    await run_with_mcp_retry(_run)
 
 
 async def send_email_agent(to: str, content: str) -> None:
     llm = make_chat_llm()
-    async with open_mcp_transport() as (r, w, _):
-        async with ClientSession(r, w) as session:
-            tools = await langchain_tools_from_mcp_session(session)
-            agent = create_react_agent(llm, tools)
-            await agent.ainvoke(
-                {"messages": [HumanMessage(content=f"给邮箱{to}发送内容：{content}")]}
-            )
+
+    async def _run(session: ClientSession):
+        tools = await langchain_tools_from_mcp_session(session)
+        agent = create_react_agent(llm, tools)
+        await agent.ainvoke(
+            {"messages": [HumanMessage(content=f"给邮箱{to}发送内容：{content}")]}
+        )
+
+    await run_with_mcp_retry(_run)

@@ -249,6 +249,35 @@ def clear_session_summary_meta(session_id: str) -> None:
     r.hdel(meta_key, "context_summary", "summary_message_count", "summary_through_index")
 
 
+def get_task_harness_meta(session_id: str) -> dict[str, Any]:
+    sid = _norm_sid(session_id)
+    raw = (get_redis().hgetall(f"{REDIS_SESSION_META_PREFIX}{sid}") or {}).get(
+        "task_harness_meta"
+    )
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def set_task_harness_meta(session_id: str, meta: dict[str, Any]) -> None:
+    sid = _norm_sid(session_id)
+    r = get_redis()
+    meta_key = f"{REDIS_SESSION_META_PREFIX}{sid}"
+    r.hset(
+        meta_key,
+        mapping={"task_harness_meta": json.dumps(meta, ensure_ascii=False)},
+    )
+
+
+def clear_task_harness_meta(session_id: str) -> None:
+    sid = _norm_sid(session_id)
+    get_redis().hdel(f"{REDIS_SESSION_META_PREFIX}{sid}", "task_harness_meta")
+
+
 def count_messages(session_id: str) -> int:
     return get_redis().llen(_key(session_id))
 

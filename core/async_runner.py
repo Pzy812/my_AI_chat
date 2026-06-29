@@ -175,8 +175,10 @@ def shutdown_async_services() -> None:
         return
     try:
         from agent.agent_checkpointer import shutdown_checkpointer
+        from app_mcp.mcp_http_client import get_mcp_manager
 
         run_async(shutdown_checkpointer(), timeout=15)
+        run_async(get_mcp_manager().close(), timeout=10)
     except Exception:
         pass
     loop.call_soon_threadsafe(loop.stop)

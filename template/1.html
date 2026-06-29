@@ -1182,6 +1182,7 @@
         const THEME_STORAGE_KEY = 'aiChatTheme';
         const LLM_CONFIG_STORAGE_KEY = 'aiChatLlmConfig';
         const HITL_ENABLED_STORAGE_KEY = 'aiChatHitlEnabled';
+        const SSE_IDLE_TIMEOUT_MS = 300000;
         let serverLlmDefaults = null;
         let activeLlmProvider = 'zhipu';
 
@@ -1750,6 +1751,11 @@
             const decoder = new TextDecoder();
             let buffer = '';
             let lastEvent = null;
+            let lastActivity = Date.now();
+
+            function touchActivity() {
+                lastActivity = Date.now();
+            }
 
             function processSseBlock(block) {
                 const trimmed = (block || '').trim();
@@ -1760,6 +1766,7 @@
                     const payload = JSON.parse(line.slice(6));
                     if (payload.type === 'stream_end') return;
                     lastEvent = payload;
+                    touchActivity();
                     if (onEvent) onEvent(payload);
                 } catch (parseErr) {
                     console.warn('SSE JSON 解析失败', parseErr, line);
@@ -1770,12 +1777,33 @@
                 if (signal && signal.aborted) {
                     throw new DOMException('Aborted', 'AbortError');
                 }
-                const chunk = await reader.read();
+                if (Date.now() - lastActivity > SSE_IDLE_TIMEOUT_MS) {
+                    throw new Error('Agent 长时间无响应（超过 ' + Math.round(SSE_IDLE_TIMEOUT_MS / 1000) + ' 秒），已自动停止。可点击「停止」或「新会话」后重试');
+                }
+                const readPromise = reader.read();
+                const timeoutPromise = new Promise(function (resolve, reject) {
+                    setTimeout(function () {
+                        reject(new Error('SSE_READ_TIMEOUT'));
+                    }, Math.min(15000, SSE_IDLE_TIMEOUT_MS));
+                });
+                let chunk;
+                try {
+                    chunk = await Promise.race([readPromise, timeoutPromise]);
+                } catch (raceErr) {
+                    if (raceErr && raceErr.message === 'SSE_READ_TIMEOUT') {
+                        if (Date.now() - lastActivity > SSE_IDLE_TIMEOUT_MS) {
+                            throw new Error('Agent 长时间无响应，已自动停止。请检查 app.py 终端日志，或点击「新会话」重新开始');
+                        }
+                        continue;
+                    }
+                    throw raceErr;
+                }
                 if (chunk.done) {
                     buffer += decoder.decode();
                     if (buffer.trim()) processSseBlock(buffer);
                     break;
                 }
+                touchActivity();
                 buffer += decoder.decode(chunk.value, { stream: true });
                 const parts = buffer.split('\n\n');
                 buffer = parts.pop() || '';
@@ -1849,6 +1877,9 @@
             if (next.completed_steps && next.completed_steps.length) {
                 out.completed_steps = next.completed_steps.slice();
             }
+            if (next.step_checklist && next.step_checklist.length) {
+                out.step_checklist = next.step_checklist.slice();
+            }
             if (typeof next.harness_enabled === 'boolean') out.harness_enabled = next.harness_enabled;
             if (next.plan_index != null && !isNaN(Number(next.plan_index))) {
                 out.plan_index = Number(next.plan_index);
@@ -1872,15 +1903,35 @@
             const plan = Array.isArray(data.plan) ? data.plan : [];
             const planIndex = Number(data.plan_index) || 0;
             const completed = Array.isArray(data.completed_steps) ? data.completed_steps : [];
+            const checklist = Array.isArray(data.step_checklist) ? data.step_checklist : [];
 
             let planHtml = '（无分步计划）';
             if (plan.length) {
                 planHtml = '<ol class="task-harness-plan-list">';
                 plan.forEach(function (step, i) {
                     let cls = '';
-                    if (i < planIndex) cls = ' class="is-done"';
-                    else if (i === planIndex) cls = ' class="is-current"';
-                    planHtml += '<li' + cls + '>' + escapeHtml(String(step)) + '</li>';
+                    let prefix = '';
+                    const item = checklist.find(function (c) { return Number(c.index) === i; });
+                    if (item) {
+                        if (item.done) {
+                            cls = ' class="is-done"';
+                            prefix = '✓ ';
+                        } else if (item.current) {
+                            cls = ' class="is-current"';
+                            prefix = '→ ';
+                        } else {
+                            prefix = '✗ ';
+                        }
+                    } else if (i < planIndex) {
+                        cls = ' class="is-done"';
+                        prefix = '✓ ';
+                    } else if (i === planIndex) {
+                        cls = ' class="is-current"';
+                        prefix = '→ ';
+                    } else {
+                        prefix = '✗ ';
+                    }
+                    planHtml += '<li' + cls + '>' + escapeHtml(prefix + String(step)) + '</li>';
                 });
                 planHtml += '</ol>';
             }
@@ -2290,6 +2341,35 @@
             return chatAbortController.signal;
         }
 
+        async function forceResetChatRun(opts) {
+            const silent = opts && opts.silent;
+            chatStopRequested = true;
+            const pendingRow = document.getElementById('chatPendingAssistant');
+            if (chatAbortController) {
+                try { chatAbortController.abort(); } catch (e) { /* ignore */ }
+            }
+            chatAbortController = null;
+            try {
+                await Promise.race([
+                    api('/chat/cancel', { session_id: getSessionId() }),
+                    new Promise(function (resolve) { setTimeout(resolve, 2000); })
+                ]);
+            } catch (e) { /* ignore */ }
+            if (pendingRow) pendingRow.remove();
+            hitlContext = null;
+            chatStopRequested = false;
+            resetReasoningSteps();
+            currentTaskHarness = null;
+            setChatUiLocked(false);
+            if (!silent) setChatStatusLine('已重置运行状态');
+        }
+
+        function renderEmptyChatLog() {
+            const log = document.getElementById('chatLog');
+            if (!log) return;
+            log.innerHTML = '<p class="empty-chat-hint text-slate-500 text-center py-14 text-sm">暂无消息。开始对话后，内容会写入 Redis。</p>';
+        }
+
         function finalizeInterruptedRun(pendingRow, reason) {
             const msg = reason || '（执行已由您中断，未写入完整回复）';
             hitlContext = null;
@@ -2441,8 +2521,10 @@
 
         async function switchSession(sid) {
             if (chatAwaitingReply) {
-                showToast('请等待当前回复结束', 'error');
-                return;
+                if (!confirm('当前 Agent 仍在运行或界面已卡住，切换会话将强制停止。是否继续？')) {
+                    return;
+                }
+                await forceResetChatRun({ silent: true });
             }
             document.getElementById('chatSessionId').value = sid;
             syncSessionNavSelect();
@@ -2450,14 +2532,18 @@
             await loadSessions();
         }
 
-        function createNewSession() {
+        async function createNewSession() {
             if (chatAwaitingReply) {
-                showToast('请等待当前回复结束', 'error');
-                return;
+                if (!confirm('当前 Agent 仍在运行或界面已卡住，创建新会话将强制停止。是否继续？')) {
+                    return;
+                }
             }
+            await forceResetChatRun({ silent: true });
             const id = 's_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
             document.getElementById('chatSessionId').value = id;
-            loadChatHistory();
+            renderEmptyChatLog();
+            setChatStatusLine('新会话「' + id + '」· 发送消息开始对话');
+            syncSessionNavSelect();
             loadSessions();
             showToast('已创建新会话', 'success');
         }

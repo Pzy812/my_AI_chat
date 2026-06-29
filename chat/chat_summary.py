@@ -199,9 +199,11 @@ async def build_agent_lc_messages(
     return lc_messages_with_summary(summary, recent)
 
 
-async def prepare_agent_lc_messages(session_id: str) -> list:
+async def prepare_agent_lc_messages(session_id: str, *, fast: bool = False) -> list:
     """读取最近消息并应用摘要策略，返回 Agent 用 LangChain 消息列表。"""
     import chat.chat_store as chat_store
 
     rows = chat_store.get_recent_messages(session_id)
+    if fast:
+        return dict_history_to_lc_messages(rows)
     return await build_agent_lc_messages(session_id, rows)

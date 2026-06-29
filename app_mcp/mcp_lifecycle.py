@@ -6,7 +6,6 @@ import socket
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 from config.app_config import BASE_DIR, MCP_HOST, MCP_PORT, MCP_URL
 
@@ -72,21 +71,12 @@ def mcp_port_open() -> bool:
         return False
 
 
-async def _fetch_mcp_tool_names() -> set[str]:
-    from app_mcp.mcp_http_client import open_mcp_session
+async def _fetch_mcp_tool_names_async() -> set[str]:
+    from app_mcp.mcp_http_client import ensure_mcp_session_healthy
 
-    async with open_mcp_session() as session:
-        page = await session.list_tools()
-        return {t.name for t in page.tools}
-
-
-_mcp_probe_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mcp-probe")
-
-
-def _fetch_mcp_tool_names_in_thread() -> set[str]:
-    if sys.platform == "win32":
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    return asyncio.run(_fetch_mcp_tool_names())
+    session = await ensure_mcp_session_healthy()
+    page = await session.list_tools()
+    return {t.name for t in page.tools}
 
 
 def mcp_tool_names() -> set[str] | None:
@@ -94,22 +84,40 @@ def mcp_tool_names() -> set[str] | None:
     if not mcp_port_open():
         return None
     try:
-        return _mcp_probe_executor.submit(_fetch_mcp_tool_names_in_thread).result(
-            timeout=15
-        )
+        from core.async_runner import run_async
+
+        return run_async(_fetch_mcp_tool_names_async(), timeout=15)
     except Exception as e:
         logger.warning("无法读取 MCP 工具列表: %s", e)
         return None
 
 
-def mcp_wechat_tools_status() -> str:
+_mcp_status_cache: tuple[float, str] | None = None
+_MCP_STATUS_CACHE_SEC = 45.0
+
+
+def mcp_wechat_tools_status(*, force: bool = False) -> str:
     """返回微信工具探测结果：ok / missing / unknown。"""
+    global _mcp_status_cache
+    import time
+
+    now = time.time()
+    if (
+        not force
+        and _mcp_status_cache is not None
+        and now - _mcp_status_cache[0] < _MCP_STATUS_CACHE_SEC
+    ):
+        return _mcp_status_cache[1]
+
     names = mcp_tool_names()
     if names is None:
-        return "unknown"
-    if REQUIRED_WECHAT_MCP_TOOLS.issubset(names):
-        return "ok"
-    return "missing"
+        status = "unknown"
+    elif REQUIRED_WECHAT_MCP_TOOLS.issubset(names):
+        status = "ok"
+    else:
+        status = "missing"
+    _mcp_status_cache = (now, status)
+    return status
 
 
 def mcp_has_current_wechat_tools() -> bool:
@@ -124,6 +132,9 @@ def mcp_has_current_wechat_tools() -> bool:
 def restart_mcp_server() -> None:
     """终止占用 MCP 端口的旧进程（含外部手动启动的 mcp_server）。"""
     global mcp_process
+    from app_mcp.mcp_http_client import get_mcp_manager
+
+    get_mcp_manager().drop_session_sync()
     stop_mcp_subprocess()
     kill_mcp_port_processes()
     mcp_process = None
@@ -134,6 +145,10 @@ def ensure_mcp_server_started(wait_sec: float = 25.0) -> bool:
     """本地未跑 mcp_server 时由 app 拉起子进程并等待端口就绪。"""
     global mcp_process
     if mcp_port_open():
+        from app_mcp.mcp_http_client import get_mcp_manager
+
+        if get_mcp_manager().has_cached_session():
+            return True
         status = mcp_wechat_tools_status()
         if status in ("ok", "unknown"):
             return True
@@ -170,6 +185,18 @@ async def ensure_mcp_server_started_async(wait_sec: float = 25.0) -> bool:
     return await asyncio.get_running_loop().run_in_executor(
         None, lambda: ensure_mcp_server_started(wait_sec)
     )
+
+
+async def recover_mcp_server_async() -> bool:
+    """重启 MCP 并等待就绪（供 Agent 连接异常后重试）。"""
+    global _mcp_status_cache
+    _mcp_status_cache = None
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, restart_mcp_server)
+    ok = await ensure_mcp_server_started_async()
+    if ok:
+        await asyncio.sleep(0.6)
+    return ok
 
 
 def start_mcp_subprocess():

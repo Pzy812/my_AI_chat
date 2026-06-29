@@ -1,23 +1,228 @@
-<img width="1920" height="966" alt="image" src="https://github.com/user-attachments/assets/e21f8905-19f8-4ff1-bcb2-a5443a99e19c" />
-页面总览<img width="1499" height="855" alt="image" src="https://github.com/user-attachments/assets/4d372a7a-f40e-4159-b5d9-0b92d1d62a93" />
+# 前端 AI 发消息
 
-可以让AI给你在本地发微信消息，发邮箱信息，检索文档，联网搜索等功能
-<img width="931" height="716" alt="image" src="https://github.com/user-attachments/assets/ad601c87-70d3-4a3e-8a0f-7f454af34800" />
-用户可以选择上传文件用那种解析方式（普通的rag或者graphRag）
-<img width="1230" height="876" alt="c6e34aa7c7f7c08fb1df9a7d04c7b908" src="https://github.com/user-attachments/assets/40effeea-fd0d-48c4-9e77-74813a842650" />
-<img width="1601" height="1020" alt="cfa8542710e8a0d6b32d8e9c77eda115" src="https://github.com/user-attachments/assets/829308b6-f5a4-4efe-a5e4-25ce8daa47fc" />
-<img width="1854" height="855" alt="e0125eb5e8d6d0d77b6cf2ea6f1f9a86" src="https://github.com/user-attachments/assets/e40a9506-1a85-4b58-ae3c-91a8b3c401d3" />
-增加了agent的推理流程图片显示在前端界面<img width="830" height="770" alt="fe8c36d62294242de4ecf4d810ed9094" src="https://github.com/user-attachments/assets/90315bf2-ed5e-46f3-bbbb-68c8f57c412e" />
+基于 **LangGraph + MCP** 的本地 AI Agent 助手：支持多轮对话、文档 RAG/GraphRAG、联网搜索，以及通过微信/邮件/Excel 等工具完成多步任务。内置 **Task Harness**（任务规划 + 分阶段工具控制 + 自动续跑）与 **HITL**（敏感操作人机确认）。
 
-<img width="797" height="617" alt="2ca56bf23006872978a6cb22133343f6" src="https://github.com/user-attachments/assets/7a99b372-786d-47cb-acff-7b2be6ae6b19" />
+> 详细架构见 [docs/STRUCTURE.md](docs/STRUCTURE.md) · Task Harness 设计见 [docs/TASK_HARNESS.md](docs/TASK_HARNESS.md)
 
-<img width="843" height="696" alt="331cb935bf0177a1d04f2d00ad696f38" src="https://github.com/user-attachments/assets/2d8ea44b-0d9d-409f-8e22-c68aaf5f5770" />
+---
 
-改了前端的页面布局前面的功能不变增加了harness机制
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/d07e35d8-57da-4149-bac8-51cebc08751d" />
+## 功能概览
 
-<img width="851" height="636" alt="9be759f27e5c9539d949852bf74c95fb" src="https://github.com/user-attachments/assets/2abe1f4d-4d76-431d-b82f-7ad725df4632" />
-<img width="1009" height="570" alt="03932624a2de0bb63f3ef20579c4d215" src="https://github.com/user-attachments/assets/32dd1973-8ee5-4714-9bb8-c8feed555ccc" />
-<img width="1080" height="2376" alt="0bfc68713cd735ad61a77bffea5667fb" src="https://github.com/user-attachments/assets/d992cc6d-0975-482f-85d9-b27e12b1ef59" />
-最后步骤
-![Uploading image.png…]()
+| 能力 | 说明 |
+|------|------|
+| **Agent 对话** | LangGraph ReAct，SSE 流式展示 Thought / Action / Observation |
+| **Task Harness** | 复杂任务自动拆步、gather/process/deliver 三阶段工具 gate、未完成自动续跑 |
+| **HITL** | 发微信、发邮件、导出 Excel 等操作需前端确认后执行 |
+| **MCP 工具** | 微信、邮件、本地文件、联网搜索、表格格式化、Excel 导出 |
+| **RAG** | Milvus 混合检索（向量 + BM25 + Rerank） |
+| **GraphRAG** | Neo4j 知识图谱 + Milvus 向量混合检索 |
+| **会话管理** | 多会话、自动标题、长对话摘要 |
+
+---
+
+## 快速开始
+
+### 前置条件
+
+- Python **3.12+**
+- 智谱 API Key（[开放平台](https://open.bigmodel.cn/)）
+- 可选：Redis、PostgreSQL、Milvus、Neo4j（完整 RAG/GraphRAG/HITL 能力）
+
+### 方式一：本地开发（Windows 推荐）
+
+```powershell
+# 1. 克隆并进入项目
+cd 前端AI发消息
+
+# 2. 安装依赖
+pip install -r requirements.txt
+pip install -r requirements-postgres.txt   # 可选：Postgres 聊天 + Checkpointer
+
+# 3. 配置环境变量
+copy .env.example .env
+# 编辑 .env，至少填入 ZHIPUAI_API_KEY=
+
+# 4. 一键启动（自动尝试拉起 MCP）
+scripts\start.bat
+# 或：python app.py
+```
+
+浏览器打开：**http://localhost:5001**
+
+> **微信发消息**依赖 Windows 桌面版微信 + `wxauto4`，仅本地 Windows 环境可用。Docker / Mac / Linux 可使用其余工具（搜索、RAG、邮件等）。
+
+### 方式二：Docker Compose（完整基础设施）
+
+适合体验 RAG / GraphRAG，无需本机单独安装 Milvus、Redis、Neo4j。
+
+```bash
+# 1. 配置 .env（至少 ZHIPUAI_API_KEY；可选 TAVILY_API_KEY、EMAIL_*）
+cp .env.example .env
+
+# 2. 启动全部服务
+docker compose up -d
+
+# 3. 访问
+# Web:   http://localhost:5001
+# Neo4j: http://localhost:7474  (neo4j / 12345678)
+```
+
+`docker compose` 会自动启动：etcd、MinIO、Milvus、Redis、Neo4j、Web（含 MCP）。
+
+### 方式三：仅 MCP 工具服务
+
+```bash
+python mcp_server.py
+# 默认 http://localhost:8090/mcp
+```
+
+---
+
+## 最小可运行配置
+
+只需以下一项即可启动 Web 并进行基础对话（工具能力会随缺失服务降级）：
+
+```env
+ZHIPUAI_API_KEY=你的密钥
+```
+
+| 配置 | 影响 |
+|------|------|
+| 无 Redis | 聊天缓存降级，Harness 元数据不可用 |
+| 无 Postgres | 无 HITL、无跨重启 Checkpointer |
+| 无 Milvus | 无法 RAG / GraphRAG 索引 |
+| 无 Tavily | 无法 `web_search` |
+| 无 MCP | 降级为纯 LLM（见终端警告） |
+
+完整变量说明见 [.env.example](.env.example)。
+
+---
+
+## Demo 场景
+
+### 1. 多步任务 + Harness + HITL
+
+**输入：**
+
+> 搜索最近一周上海嘉定天气，整理成表格，发到 xxx@example.com
+
+**预期行为：**
+
+1. 检测到复杂任务 → 生成 3–7 步执行计划，前端展示 checklist
+2. **gather** 阶段：调用 `web_search` / `web_search_batch`
+3. **process** 阶段：调用 `format_pretty_table`（HITL 确认）
+4. **deliver** 阶段：调用 `send_email`（HITL 确认）
+5. 若 Agent 口头说「将要发送」但未调工具 → 系统自动 nudge 续跑
+
+### 2. 文档 RAG 问答
+
+1. 上传 PDF / Word
+2. 选择 **普通 RAG** 或 **GraphRAG** 索引模式
+3. 提问文档内容，Agent 优先依据检索结果回答
+
+### 3. 跨轮续跑
+
+1. 发起复杂任务，若单轮未完成
+2. 发送 **「继续」** → 从 Redis 恢复 Harness 计划与进度，继续执行
+
+---
+
+## 架构简图
+
+```
+浏览器 (template/1.html)
+    │  HTTP / SSE
+    ▼
+Flask (app.py → routes/*)
+    │  asyncio
+    ▼
+LangGraph ReAct Agent (agent/*)
+    │  MCP HTTP
+    ▼
+mcp_server.py ──→ 微信 / 邮件 / 搜索 / 文件 / Excel
+
+并行存储：
+  chat_store  → Postgres + Redis
+  rag_service → Milvus (+ Neo4j GraphRAG)
+  checkpointer → Postgres (HITL 恢复)
+```
+
+---
+
+## 项目结构
+
+```
+├── app.py              # Web 入口
+├── mcp_server.py       # MCP 工具服务
+├── agent/              # LangGraph Agent、Harness、HITL
+├── chat/               # 会话存储与摘要
+├── rag/                # RAG / GraphRAG
+├── app_mcp/            # MCP 生命周期与工具实现
+├── routes/             # Flask API
+├── template/1.html     # 前端单页
+├── docs/               # 架构与设计文档
+└── scripts/start.bat   # Windows 一键启动
+```
+
+详见 [docs/STRUCTURE.md](docs/STRUCTURE.md)。
+
+---
+
+## 常用 API
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/` | 前端页面 |
+| POST | `/chat/message/stream` | 流式对话（SSE） |
+| POST | `/chat/hitl/resume/stream` | HITL 确认后继续 |
+| POST | `/chat/cancel` | 取消当前 Agent 运行 |
+| GET | `/service/mcp/status` | MCP 服务状态 |
+
+---
+
+## 开发说明
+
+```powershell
+# 文档解析依赖（PDF/Office）
+scripts\install_doc_deps.bat
+
+# 微信工具测试
+python scripts/testwx.py
+
+# 单元测试（Task Harness 逻辑，无需 API Key / 外部服务）
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+GitHub Actions 在 push / PR 时自动运行上述测试（见 [`.github/workflows/python-app.yml`](.github/workflows/python-app.yml)）。
+
+**Task Harness** 默认开启（`AGENT_TASK_HARNESS=1`）。关闭后复杂任务不再拆步规划，仅保留基础 ReAct + HITL。
+
+设计原理、阶段划分、续跑机制见 **[docs/TASK_HARNESS.md](docs/TASK_HARNESS.md)**。
+
+---
+
+## 界面预览
+
+<details>
+<summary>点击展开截图</summary>
+
+页面总览：
+
+![页面总览](https://github.com/user-attachments/assets/e21f8905-19f8-4ff1-bcb2-a5443a99e19c)
+
+Agent 推理流程、HITL 确认、Task Harness checklist：
+
+![推理流程](https://github.com/user-attachments/assets/90315bf2-ed5e-46f3-bbbb-68c8f57c412e)
+
+![HITL](https://github.com/user-attachments/assets/7a99b372-786d-47cb-acff-7b2be6ae6b19)
+
+![Harness](https://github.com/user-attachments/assets/d07e35d8-57da-4149-bac8-51cebc08751d)
+
+</details>
+
+---
+
+## License
+
+个人 / 学习用途项目。部署前请妥善保管 `.env` 中的 API Key，勿提交到公开仓库。

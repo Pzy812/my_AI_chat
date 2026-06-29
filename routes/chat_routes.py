@@ -85,13 +85,23 @@ def _sse_payload(data: dict) -> str:
 
 def _chat_error_hint(exc: BaseException) -> str:
     err_name = type(exc).__name__
+    err_text = str(exc).lower()
     hint = ""
-    if "Timeout" in err_name or "timeout" in str(exc).lower():
+    if "Timeout" in err_name or "timeout" in err_text:
         hint = "（多为文档过长或智谱 API 响应超时，已启用 GraphRAG 精简上下文；可设置 LLM_REQUEST_TIMEOUT=300 后重启）"
-    elif "429" in str(exc) or "too many requests" in str(exc).lower() or "频率" in str(exc):
+    elif "429" in str(exc) or "too many requests" in err_text or "频率" in str(exc):
         hint = "（智谱 API 触发限速 HTTP 429，已自动重试；若仍失败请增大 API_REQUEST_INTERVAL_SEC / GRAPHRAG_EXTRACT_BATCH_DELAY_SEC 后重启）"
-    elif "connection attempts failed" in str(exc).lower() or "connecterror" in str(exc).lower():
+    elif err_name == "SSEError" or (
+        "text/event-stream" in err_text and "got ''" in err_text
+    ):
+        hint = (
+            "（智谱流式接口返回异常，多为 API 429/限速或网络问题，与 MCP 工具服务无关；"
+            "请稍后重试或关闭「推理流式展示」）"
+        )
+    elif "connection attempts failed" in err_text or "connecterror" in err_text:
         hint = "（多为 Windows 系统代理导致无法连接本机 MCP；已修复 trust_env，请重启 app.py 与 mcp_server.py；或检查 MCP 8090 端口）"
+    elif "text/event-stream" in err_text or err_name in ("TransportError",):
+        hint = "（MCP 工具服务连接异常，系统已尝试自动重启 MCP；若仍失败请手动重启 app.py 与 mcp_server.py）"
     return hint
 
 
@@ -468,10 +478,10 @@ def chat_message_stream():
     )
     async def _stream_with_summary():
         from agent.harness import (
-            extract_user_goal,
             needs_task_harness,
             task_harness_event_payload,
         )
+        from agent.task_checklist import extract_primary_user_goal, is_continue_message
         from agent.task_state import default_task_fields
 
         yield {
@@ -479,19 +489,36 @@ def chat_message_stream():
             "phase": "status",
             "content": "正在准备对话上下文…",
         }
-        lc_messages = await prepare_agent_lc_messages(session_id)
-        user_goal = extract_user_goal(lc_messages)
+        is_continue = is_continue_message(ctx["text"])
+        lc_messages = await prepare_agent_lc_messages(session_id, fast=is_continue)
+        user_goal = extract_primary_user_goal(lc_messages)
         if user_goal:
             preview = default_task_fields()
             preview["user_goal"] = user_goal
             preview["harness_enabled"] = needs_task_harness(
                 user_goal, file_count=len(file_ids)
             )
+            if is_continue:
+                import chat.chat_store as chat_store
+
+                persisted = chat_store.get_task_harness_meta(session_id)
+                if persisted.get("plan"):
+                    preview["plan"] = list(persisted["plan"])
+                    preview["plan_index"] = int(persisted.get("plan_index") or 0)
+                    preview["task_phase"] = persisted.get("task_phase") or "gather"
+                    preview["step_checklist"] = list(persisted.get("step_checklist") or [])
+                    preview["harness_enabled"] = bool(
+                        persisted.get("harness_enabled", preview["harness_enabled"])
+                    )
             yield task_harness_event_payload(preview)
         yield {
             "type": "step",
             "phase": "status",
-            "content": "正在生成任务计划并启动 Agent…",
+            "content": (
+                "正在恢复任务进度并启动 Agent…"
+                if is_continue
+                else "正在生成任务计划并启动 Agent…"
+            ),
         }
         async for event in stream_agent_with_history(
             lc_messages,
@@ -507,6 +534,8 @@ def chat_message_stream():
     async_gen = _stream_with_summary()
 
     def on_result(event: dict):
+        if event.get("_error"):
+            return [{"type": "error", "code": -1, "msg": event["_error"]}]
         reply = event.get("reply")
         msgs = event.get("messages") or []
         hitl_pending = event.get("hitl")
@@ -691,6 +720,8 @@ def chat_hitl_resume_stream():
     )
 
     def on_result(event: dict):
+        if event.get("_error"):
+            return [{"type": "error", "code": -1, "msg": event["_error"]}]
         reply = event.get("reply")
         msgs = event.get("messages") or []
         hitl_pending = event.get("hitl")

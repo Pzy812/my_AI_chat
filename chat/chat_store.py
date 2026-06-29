@@ -196,3 +196,17 @@ def get_upload_metas(session_id: str, file_ids: list[str]) -> list[dict[str, Any
         if m:
             out.append(m)
     return out
+
+
+def get_task_harness_meta(session_id: str) -> dict[str, Any]:
+    return chat_redis.get_task_harness_meta(session_id)
+
+
+def save_task_harness_meta(session_id: str, meta: dict[str, Any]) -> None:
+    if not meta:
+        return
+    chat_redis.set_task_harness_meta(session_id, meta)
+
+
+def clear_task_harness_meta(session_id: str) -> None:
+    chat_redis.clear_task_harness_meta(session_id)
