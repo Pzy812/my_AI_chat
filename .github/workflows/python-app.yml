@@ -42,6 +42,7 @@ jobs:
           # 跳过可选的 awslabs MCP 解析包，加快 CI
           grep -v "awslabs-document-loader" requirements.txt > /tmp/requirements-ci.txt
           pip install -r /tmp/requirements-ci.txt -r requirements-dev.txt
+          pip install psycopg[binary]
 
       - name: Run unit tests
         run: pytest tests/ -v --tb=short

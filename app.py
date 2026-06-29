@@ -1,7 +1,7 @@
 """Flask 应用入口：创建 app 并启动 Web 服务。"""
 import os
 import sys
-# 今天上海嘉定天气怎么样，把最近一周结果发送给971662861@qq.com，并且把sam2论文相对应sam做了哪一些改进的发给他，并且给他发送一些生日祝福语，并且把最近一周上海嘉定天气作成表格存储到本地
+# 今天上海嘉定天气怎么样，把最近一周结果发送给971662861@qq.com，并且把最近agent相关的哪一些地方做改进的发给他，并且给他发送一些生日祝福语，并且把最近一周上海嘉定天气作成表格存储到本地
 # Windows 系统代理常导致 httpx 无法直连 localhost（MCP/Redis 等）
 _NO_PROXY_HOSTS = "localhost,127.0.0.1,0.0.0.0"
 for _proxy_key in ("NO_PROXY", "no_proxy"):
