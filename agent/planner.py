@@ -7,6 +7,7 @@ import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from agent.task_continue import goal_requires_gather, user_goal_requires_deliver
 from agent.task_state import infer_phase_from_step
 from config.app_config import (
     AGENT_TASK_HARNESS,
@@ -106,6 +107,11 @@ def needs_task_harness(user_goal: str, *, file_count: int = 0) -> bool:
     # 「并且」+ 任一工具意图
     if "并且" in text and tool_hits >= 1:
         signals += 2
+
+    # 纯外发（仅发邮件/微信/导出，无需先搜索读文件）不走分阶段 Harness，
+    # 否则 plan 仍在 gather 阶段会拦截 send_email 等工具。
+    if user_goal_requires_deliver(text) and not goal_requires_gather(text, file_count=file_count):
+        return False
 
     return signals >= AGENT_TASK_HARNESS_MIN_SIGNALS
 

@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import re
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
 from agent.task_state import DELIVER_KEYWORDS
 from chat.chat_helpers import messages_have_pending_tool_calls
+
+_NON_USER_HUMAN_PREFIXES = ("【系统", "【此前对话摘要")
 
 DELIVER_ACTION_TOOLS: frozenset[str] = frozenset(
     {
@@ -31,8 +33,49 @@ _PROMISE_DELIVER_RE = re.compile(
 
 MAX_DELIVER_CONTINUATIONS = 1
 
-# thread_id → 已成功执行的外发工具名
+# thread_id → 当前用户轮次序号 / 该轮已成功执行的外发工具名
+_deliver_turn_serial: dict[str, int] = {}
 _deliver_done: dict[str, set[str]] = {}
+
+
+def _human_message_text(msg: HumanMessage) -> str:
+    content = msg.content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text") or ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "\n".join(parts).strip()
+    return str(content or "").strip()
+
+
+def is_real_user_message(msg: BaseMessage) -> bool:
+    """排除系统自动续跑等注入的 HumanMessage。"""
+    if not isinstance(msg, HumanMessage):
+        return False
+    text = _human_message_text(msg).strip()
+    if not text:
+        return False
+    return not any(text.startswith(prefix) for prefix in _NON_USER_HUMAN_PREFIXES)
+
+
+def count_real_user_messages(messages: list) -> int:
+    return sum(1 for m in (messages or []) if is_real_user_message(m))
+
+
+def messages_in_current_user_turn(messages: list) -> list:
+    """当前用户轮次内的消息（自最近一条真实用户消息起，含续跑 nudge 之后的内容）。"""
+    if not messages:
+        return []
+    last_user_idx = -1
+    for i, m in enumerate(messages):
+        if is_real_user_message(m):
+            last_user_idx = i
+    if last_user_idx < 0:
+        return list(messages)
+    return list(messages[last_user_idx:])
 
 
 def _tool_content_str(content) -> str:
@@ -63,7 +106,7 @@ def _is_successful_deliver_tool(name: str, content_str: str) -> bool:
     if not text or text.startswith("⏸️") or text.startswith("⛔") or text.startswith("ℹ️"):
         return False
     if name in DELIVER_ACTION_TOOLS:
-        return is_deliver_success_text(text) or bool(text)
+        return is_deliver_success_text(text)
     if is_deliver_success_text(text):
         return True
     return False
@@ -88,12 +131,22 @@ def _detect_completed_deliver_tools(messages: list) -> set[str]:
 
 
 def sync_deliver_completion_flags(thread_id: str, messages: list) -> None:
-    done = _detect_completed_deliver_tools(messages)
-    if not done:
-        return
+    """仅根据当前用户轮次内的 ToolMessage 同步外发完成标记（跨轮次可再次外发）。"""
     tid = (thread_id or "default").strip() or "default"
-    prev = _deliver_done.get(tid, set())
-    _deliver_done[tid] = prev | done
+    serial = count_real_user_messages(messages)
+    turn_messages = messages_in_current_user_turn(messages)
+    done = _detect_completed_deliver_tools(turn_messages)
+    prev_serial = _deliver_turn_serial.get(tid)
+    if prev_serial != serial:
+        _deliver_turn_serial[tid] = serial
+        _deliver_done[tid] = done
+        return
+    _deliver_done[tid] = done
+
+
+def get_deliver_done_tools(thread_id: str) -> set[str]:
+    tid = (thread_id or "default").strip() or "default"
+    return set(_deliver_done.get(tid, set()))
 
 
 def mark_deliver_tool_done(thread_id: str, tool_name: str) -> None:
@@ -102,16 +155,37 @@ def mark_deliver_tool_done(thread_id: str, tool_name: str) -> None:
     tid = (thread_id or "default").strip() or "default"
     prev = _deliver_done.get(tid, set())
     _deliver_done[tid] = prev | {tool_name}
+    try:
+        from agent.harness import patch_deliver_done_in_run_context
+
+        patch_deliver_done_in_run_context(tid, tool_name)
+    except Exception:
+        pass
 
 
 def is_deliver_tool_done(thread_id: str, tool_name: str) -> bool:
     tid = (thread_id or "default").strip() or "default"
+    try:
+        from agent.harness import get_run_context_deliver_done
+
+        ctx_done = get_run_context_deliver_done(tid)
+        if ctx_done is not None:
+            return tool_name in ctx_done
+    except Exception:
+        pass
     return tool_name in _deliver_done.get(tid, set())
 
 
 def clear_deliver_flags(thread_id: str) -> None:
     tid = (thread_id or "default").strip() or "default"
     _deliver_done.pop(tid, None)
+    _deliver_turn_serial.pop(tid, None)
+    try:
+        from agent.harness import clear_run_context_deliver_state
+
+        clear_run_context_deliver_state(tid)
+    except Exception:
+        pass
 
 
 def deliver_duplicate_block_message(tool_name: str) -> str:
@@ -119,8 +193,8 @@ def deliver_duplicate_block_message(tool_name: str) -> str:
 
     label = hitl_tool_label(tool_name)
     return (
-        f"ℹ️ {label}已在本次对话中成功执行，请勿重复调用。"
-        "请直接向用户总结已完成的内容，不要再发起外发。"
+        f"⛔ {label}在本轮用户请求中已成功执行过，本次重复调用未实际执行。"
+        "请不要再重复调用该外发工具，直接向用户总结已发送的内容。"
     )
 
 
@@ -133,8 +207,45 @@ def user_goal_requires_deliver(user_goal: str) -> bool:
     return bool(re.search(r"[@＠]\w+|@\w+\.\w+", text))
 
 
+_GATHER_INTENT_KEYWORDS = (
+    "搜索",
+    "联网",
+    "查询",
+    "查找",
+    "查一下",
+    "读取",
+    "读文件",
+    "目录",
+    "文件夹",
+    "附件",
+    "论文",
+    "新闻",
+    "收集",
+    "汇总",
+    "整理",
+    "表格",
+    "天气",
+    "股价",
+    "汇率",
+    "web_search",
+    "list_local",
+    "glob_local",
+    "read_local",
+)
+
+
+def goal_requires_gather(user_goal: str, *, file_count: int = 0) -> bool:
+    """用户目标是否必须先做信息收集（搜索/读文件等）再外发。"""
+    if file_count > 0:
+        return True
+    text = (user_goal or "").strip()
+    if not text:
+        return False
+    return any(k in text for k in _GATHER_INTENT_KEYWORDS)
+
+
 def deliver_tools_used(messages: list) -> bool:
-    return bool(_detect_completed_deliver_tools(messages))
+    return bool(_detect_completed_deliver_tools(messages_in_current_user_turn(messages)))
 
 
 def assistant_promised_deliver(reply: str) -> bool:

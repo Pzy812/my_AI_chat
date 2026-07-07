@@ -31,6 +31,8 @@ from agent.agent_stream import (
 )
 from config.app_config import LOG_LLM_PROMPT, UPLOADS_DIR
 from core.app_utils import format_error
+from observability.langsmith_trace import finalize_trace_for_session
+from observability.langsmith_session import clear_session_trace
 from chat.chat_helpers import (
     build_tool_debug_from_messages,
     build_user_message_text,
@@ -190,6 +192,7 @@ def _build_chat_success_payload(
     rag_mode: str,
     include_tool_debug: bool,
     agent_system_prompt: str,
+    langsmith_trace: dict | None = None,
 ) -> dict:
     attachments = extract_mcp_attachments_from_messages(msgs)
     out: dict = {"code": 0, "status": "completed", "msg": reply, "session_id": session_id}
@@ -203,6 +206,8 @@ def _build_chat_success_payload(
     if include_tool_debug:
         out["tool_debug"] = build_tool_debug_from_messages(msgs)
         out["prompt_debug"] = prompt_debug_payload(agent_system_prompt, rag_context)
+    if langsmith_trace:
+        out["langsmith"] = langsmith_trace
     return out
 
 
@@ -306,6 +311,7 @@ def chat_clear():
     try:
         chat_store.clear_session(session_id)
         rag_service.delete_session_indexes(session_id)
+        clear_session_trace(session_id)
         return jsonify({"code": 0, "msg": "会话记忆已清空"})
     except Exception as e:
         return jsonify({"code": -1, "msg": str(e)})
@@ -345,6 +351,7 @@ def chat_session_delete():
     try:
         chat_store.clear_session(session_id)
         rag_service.delete_session_indexes(session_id)
+        clear_session_trace(session_id)
         return jsonify({"code": 0, "msg": "已删除会话"})
     except Exception as e:
         return jsonify({"code": -1, "msg": str(e)})
@@ -412,25 +419,27 @@ def chat_message():
             )
 
         reply, msgs, hitl_pending = run_async(_invoke_chat(), run_key=session_id)
+        langsmith_trace = finalize_trace_for_session(session_id)
         if hitl_pending:
             pending = hitl_pending[0] if hitl_pending else {}
-            return jsonify(
-                {
-                    "code": 0,
-                    "status": "hitl_pending",
-                    "session_id": session_id,
-                    "rag_mode": rag_mode,
-                    "hitl": {
-                        "pending": hitl_pending,
-                        "tool": pending.get("tool"),
-                        "label": pending.get("label"),
-                        "summary": pending.get("summary"),
-                        "args": pending.get("args"),
-                        "hitl_enabled": hitl_available(),
-                    },
-                    "msg": "等待您确认是否执行敏感操作",
-                }
-            )
+            hitl_out = {
+                "code": 0,
+                "status": "hitl_pending",
+                "session_id": session_id,
+                "rag_mode": rag_mode,
+                "hitl": {
+                    "pending": hitl_pending,
+                    "tool": pending.get("tool"),
+                    "label": pending.get("label"),
+                    "summary": pending.get("summary"),
+                    "args": pending.get("args"),
+                    "hitl_enabled": hitl_available(),
+                },
+                "msg": "等待您确认是否执行敏感操作",
+            }
+            if langsmith_trace:
+                hitl_out["langsmith"] = langsmith_trace
+            return jsonify(hitl_out)
         if not reply:
             return jsonify({"code": -1, "msg": "模型未返回有效回复"})
         chat_store.save_message(
@@ -449,6 +458,7 @@ def chat_message():
                 rag_mode=rag_mode,
                 include_tool_debug=include_tool_debug,
                 agent_system_prompt=agent_system_prompt,
+                langsmith_trace=langsmith_trace,
             )
         )
     except Exception as e:
@@ -528,6 +538,7 @@ def chat_message_stream():
             file_count=len(file_ids),
             llm_config=ctx["llm_config"],
             hitl_enabled=ctx["hitl_enabled"],
+            rag_mode=rag_mode,
         ):
             yield event
 
@@ -539,11 +550,13 @@ def chat_message_stream():
         reply = event.get("reply")
         msgs = event.get("messages") or []
         hitl_pending = event.get("hitl")
+        langsmith_trace = event.get("langsmith")
         if hitl_pending:
             return [build_stream_hitl_payload(
                 session_id=session_id,
                 hitl_pending=hitl_pending,
                 rag_mode=rag_mode,
+                langsmith_trace=langsmith_trace,
             )]
         if not reply:
             return [{
@@ -567,6 +580,7 @@ def chat_message_stream():
                 rag_mode=rag_mode,
                 include_tool_debug=include_tool_debug,
                 agent_system_prompt=agent_system_prompt,
+                langsmith_trace=langsmith_trace,
             )
         ]
 
@@ -646,24 +660,26 @@ def chat_hitl_resume():
             ),
             run_key=session_id,
         )
+        langsmith_trace = finalize_trace_for_session(session_id)
         if hitl_pending:
             pending = hitl_pending[0] if hitl_pending else {}
-            return jsonify(
-                {
-                    "code": 0,
-                    "status": "hitl_pending",
-                    "session_id": session_id,
-                    "rag_mode": rag_mode,
-                    "hitl": {
-                        "pending": hitl_pending,
-                        "tool": pending.get("tool"),
-                        "label": pending.get("label"),
-                        "summary": pending.get("summary"),
-                        "args": pending.get("args"),
-                    },
-                    "msg": "等待您确认是否执行敏感操作",
-                }
-            )
+            hitl_out = {
+                "code": 0,
+                "status": "hitl_pending",
+                "session_id": session_id,
+                "rag_mode": rag_mode,
+                "hitl": {
+                    "pending": hitl_pending,
+                    "tool": pending.get("tool"),
+                    "label": pending.get("label"),
+                    "summary": pending.get("summary"),
+                    "args": pending.get("args"),
+                },
+                "msg": "等待您确认是否执行敏感操作",
+            }
+            if langsmith_trace:
+                hitl_out["langsmith"] = langsmith_trace
+            return jsonify(hitl_out)
         if not reply:
             return jsonify({"code": -1, "msg": "模型未返回有效回复"})
         chat_store.save_message(
@@ -682,6 +698,7 @@ def chat_hitl_resume():
                 rag_mode=rag_mode,
                 include_tool_debug=include_tool_debug,
                 agent_system_prompt=agent_system_prompt,
+                langsmith_trace=langsmith_trace,
             )
         )
     except Exception as e:
@@ -717,6 +734,7 @@ def chat_hitl_resume_stream():
         log_prompt=LOG_LLM_PROMPT or include_tool_debug,
         llm_config=llm_config,
         hitl_enabled=hitl_enabled,
+        rag_mode=rag_mode,
     )
 
     def on_result(event: dict):
@@ -725,11 +743,13 @@ def chat_hitl_resume_stream():
         reply = event.get("reply")
         msgs = event.get("messages") or []
         hitl_pending = event.get("hitl")
+        langsmith_trace = event.get("langsmith")
         if hitl_pending:
             return [build_stream_hitl_payload(
                 session_id=session_id,
                 hitl_pending=hitl_pending,
                 rag_mode=rag_mode,
+                langsmith_trace=langsmith_trace,
             )]
         if not reply:
             return [{
@@ -753,6 +773,7 @@ def chat_hitl_resume_stream():
                 rag_mode=rag_mode,
                 include_tool_debug=include_tool_debug,
                 agent_system_prompt=agent_system_prompt,
+                langsmith_trace=langsmith_trace,
             )
         ]
 

@@ -218,6 +218,12 @@ async def _invoke_agent(
     file_count: int = 0,
 ) -> tuple[str | None, list, list[dict] | None]:
     """返回 (reply_text|None, messages, hitl_pending|None)。"""
+    from observability.langsmith_session import (
+        agent_turn_trace,
+        extract_last_user_text,
+        finish_agent_turn,
+    )
+
     config, input_data, _ = await prepare_agent_invoke(
         session_id=session_id,
         lc_messages=lc_messages,
@@ -225,68 +231,31 @@ async def _invoke_agent(
         fresh_thread=fresh_thread,
         file_count=file_count,
     )
-    if resume_action is not None:
-        if get_checkpointer():
-            try:
-                from agent.harness import sync_run_context_from_values
+    user_preview = extract_last_user_text(lc_messages) if lc_messages else ""
+    is_resume = resume_action is not None
+    reply: str | None = None
+    msgs: list = []
+    hitl: list[dict] | None = None
 
-                snap = await agent.aget_state(config)
-                if snap and snap.values:
-                    sync_run_context_from_values(session_id, dict(snap.values))
-            except Exception:
-                pass
-        state = await agent.ainvoke(input_data, config=config)
-    else:
-        state = await agent.ainvoke(input_data, config=config)
+    with agent_turn_trace(
+        session_id,
+        user_input=user_preview,
+        is_resume=is_resume,
+    ) as turn_run:
+        if resume_action is not None:
+            if get_checkpointer():
+                try:
+                    from agent.harness import sync_run_context_from_values
 
-    task_state = {
-        k: state.get(k)
-        for k in (
-            "user_goal",
-            "plan",
-            "plan_index",
-            "task_phase",
-            "harness_enabled",
-            "completed_steps",
-            "step_checklist",
-            "task_status",
-        )
-        if k in state
-    }
-    continuations = 0
-    while True:
-        hitl = normalize_interrupts(state.get("__interrupt__"))
-        msgs = state.get("messages") or []
-        pending = messages_have_pending_tool_calls(msgs)
-        if hitl and not pending:
-            hitl = []
-        elif not hitl and pending:
-            from agent.agent_state import synthetic_hitl_from_messages
+                    snap = await agent.aget_state(config)
+                    if snap and snap.values:
+                        sync_run_context_from_values(session_id, dict(snap.values))
+                except Exception:
+                    pass
+            state = await agent.ainvoke(input_data, config=config)
+        else:
+            state = await agent.ainvoke(input_data, config=config)
 
-            hitl = synthetic_hitl_from_messages(msgs) or None
-        if hitl:
-            return None, msgs, hitl
-        if pending:
-            return None, msgs, None
-        reply = last_assistant_text(msgs)
-        nudge = should_continue_task(task_state, msgs, reply)
-        if not nudge or continuations >= MAX_TASK_CONTINUATIONS:
-            persist_task_harness_meta(session_id, task_state)
-            return reply, msgs, None
-        continuations += 1
-        if task_state.get("harness_enabled"):
-            plan = list(task_state.get("plan") or [])
-            plan_index = int(task_state.get("plan_index") or 0)
-            task_state = {
-                **task_state,
-                "task_phase": compute_task_phase(plan, plan_index, harness_enabled=True),
-            }
-            from agent.harness import sync_run_context_from_values
-
-            sync_run_context_from_values(session_id, task_state)
-        state = await agent.ainvoke(
-            {"messages": [HumanMessage(content=nudge)]}, config=config
-        )
         task_state = {
             k: state.get(k)
             for k in (
@@ -300,7 +269,58 @@ async def _invoke_agent(
                 "task_status",
             )
             if k in state
-        } or task_state
+        }
+        continuations = 0
+        while True:
+            hitl = normalize_interrupts(state.get("__interrupt__"))
+            msgs = state.get("messages") or []
+            pending = messages_have_pending_tool_calls(msgs)
+            if hitl and not pending:
+                hitl = []
+            elif not hitl and pending:
+                from agent.agent_state import synthetic_hitl_from_messages
+
+                hitl = synthetic_hitl_from_messages(msgs) or None
+            if hitl:
+                finish_agent_turn(session_id, turn_run=turn_run, hitl_pending=True)
+                return None, msgs, hitl
+            if pending:
+                finish_agent_turn(session_id, turn_run=turn_run, hitl_pending=True)
+                return None, msgs, None
+            reply = last_assistant_text(msgs)
+            nudge = should_continue_task(task_state, msgs, reply)
+            if not nudge or continuations >= MAX_TASK_CONTINUATIONS:
+                persist_task_harness_meta(session_id, task_state)
+                finish_agent_turn(session_id, turn_run=turn_run, reply=reply)
+                return reply, msgs, None
+            continuations += 1
+            if task_state.get("harness_enabled"):
+                plan = list(task_state.get("plan") or [])
+                plan_index = int(task_state.get("plan_index") or 0)
+                task_state = {
+                    **task_state,
+                    "task_phase": compute_task_phase(plan, plan_index, harness_enabled=True),
+                }
+                from agent.harness import sync_run_context_from_values
+
+                sync_run_context_from_values(session_id, task_state)
+            state = await agent.ainvoke(
+                {"messages": [HumanMessage(content=nudge)]}, config=config
+            )
+            task_state = {
+                k: state.get(k)
+                for k in (
+                    "user_goal",
+                    "plan",
+                    "plan_index",
+                    "task_phase",
+                    "harness_enabled",
+                    "completed_steps",
+                    "step_checklist",
+                    "task_status",
+                )
+                if k in state
+            } or task_state
 
 
 async def _invoke_react_agent(

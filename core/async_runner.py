@@ -15,6 +15,23 @@ from typing import Any, TypeVar
 
 T = TypeVar("T")
 
+
+def _restore_asyncio_create_task() -> None:
+    """恢复标准库 asyncio.create_task（支持 context=）。
+
+    PyCharm PyDev Console 会替换 asyncio.create_task 为仅 (coro, name=) 的 shim，
+    导致 LangGraph 1.1+ 调用 create_task(..., context=...) 失败并降级为无 MCP 模式。
+    """
+    import asyncio.tasks as asyncio_tasks
+
+    real = asyncio_tasks.create_task
+    if asyncio.create_task is real:
+        return
+    asyncio.create_task = real
+
+
+_restore_asyncio_create_task()
+
 _loop: asyncio.AbstractEventLoop | None = None
 _thread: threading.Thread | None = None
 _ready = threading.Event()

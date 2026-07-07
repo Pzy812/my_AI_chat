@@ -195,6 +195,7 @@ async def _prepare_invoke(
     resume_action: str | None,
     fresh_thread: bool,
     file_count: int = 0,
+    rag_mode: str | None = None,
 ) -> tuple[dict, Any]:
     config, input_data, _ = await prepare_agent_invoke(
         session_id=session_id,
@@ -202,6 +203,8 @@ async def _prepare_invoke(
         resume_action=resume_action,
         fresh_thread=fresh_thread,
         file_count=file_count,
+        rag_mode=rag_mode,
+        stream=True,
     )
     return config, input_data
 
@@ -252,7 +255,14 @@ async def _iter_react_agent_events(
     config: dict,
     *,
     pre_events: list[dict[str, Any]] | None = None,
+    resume_action: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
+    from observability.langsmith_session import (
+        agent_turn_trace,
+        extract_last_user_text,
+        finish_agent_turn,
+    )
+
     for ev in pre_events or []:
         yield ev
     task_baseline: dict[str, Any] = {}
@@ -278,112 +288,159 @@ async def _iter_react_agent_events(
     hitl: list[dict] | None = None
     last_state: dict[str, Any] = dict(task_baseline)
     stuck_recovery_used = False
+    root_run_id: str | None = None
+    thread_id = str((config.get("configurable") or {}).get("thread_id") or "default")
+    _root_chain_names = frozenset({"LangGraph", "agent", "RunnableSequence"})
+    _configured_run_name = (config.get("run_name") or "").strip()
+    user_preview = ""
+    if isinstance(input_data, dict):
+        user_preview = extract_last_user_text(input_data.get("messages"))
+    is_resume = resume_action is not None
 
-    while True:
-        last_state = dict(task_baseline) if continuations == 0 else last_state
-        last_harness_sig: str | None = None
-        agent_started = False
-        stuck_give_up_nudge: str | None = None
-        consecutive_phase_abandon = 0
-        thread_id = str((config.get("configurable") or {}).get("thread_id") or "default")
-        async for event in agent.astream_events(current_input, config=config, version="v2"):
-            if event.get("event") == "on_tool_end":
-                output = (event.get("data") or {}).get("output")
-                if hasattr(output, "content"):
-                    obs_text = _message_content_text(output.content)
-                else:
-                    obs_text = _message_content_text(output)
-                if is_phase_gate_abandon_message(obs_text):
-                    consecutive_phase_abandon += 1
-                else:
-                    consecutive_phase_abandon = 0
-                if consecutive_phase_abandon >= _MAX_CONSECUTIVE_PHASE_ABANDON:
-                    abandoned = get_abandoned_tools(thread_id)
-                    stuck_give_up_nudge = build_stuck_give_up_nudge(abandoned)
-                    yield {
-                        "type": "step",
-                        "phase": "status",
-                        "content": (
-                            "检测到工具因阶段限制反复失败，停止重试，"
-                            "改为直接向用户说明…"
-                        ),
-                    }
+    with agent_turn_trace(
+        thread_id,
+        user_input=user_preview,
+        is_resume=is_resume,
+    ) as turn_run:
+        while True:
+            last_state = dict(task_baseline) if continuations == 0 else last_state
+            last_harness_sig: str | None = None
+            agent_started = False
+            stuck_give_up_nudge: str | None = None
+            consecutive_phase_abandon = 0
+            async for event in agent.astream_events(current_input, config=config, version="v2"):
+                if event.get("event") == "on_chain_start":
+                    ev_run_id = event.get("run_id")
+                    ev_name = (event.get("name") or "").strip()
+                    if ev_run_id:
+                        rid_s = str(ev_run_id)
+                        if (
+                            ev_name in _root_chain_names
+                            or ev_name.startswith("turn-")
+                            or ev_name.startswith("chat:")
+                            or ev_name.startswith("agent:")
+                            or (_configured_run_name and ev_name == _configured_run_name)
+                        ):
+                            root_run_id = rid_s
+                        elif root_run_id is None:
+                            parent_ids = event.get("parent_ids") or []
+                            if not parent_ids:
+                                root_run_id = rid_s
+                if event.get("event") == "on_tool_end":
+                    output = (event.get("data") or {}).get("output")
+                    if hasattr(output, "content"):
+                        obs_text = _message_content_text(output.content)
+                    else:
+                        obs_text = _message_content_text(output)
+                    if is_phase_gate_abandon_message(obs_text):
+                        consecutive_phase_abandon += 1
+                    else:
+                        consecutive_phase_abandon = 0
+                    if consecutive_phase_abandon >= _MAX_CONSECUTIVE_PHASE_ABANDON:
+                        abandoned = get_abandoned_tools(thread_id)
+                        stuck_give_up_nudge = build_stuck_give_up_nudge(abandoned)
+                        yield {
+                            "type": "step",
+                            "phase": "status",
+                            "content": (
+                                "检测到工具因阶段限制反复失败，停止重试，"
+                                "改为直接向用户说明…"
+                            ),
+                        }
+                        break
+                chunk_state = _state_from_chain_event(event)
+                if chunk_state:
+                    merged = merge_task_state(last_state, chunk_state)
+                    last_state = merged
+                    if merged.get("user_goal") or merged.get("harness_enabled"):
+                        harness_ev = task_harness_event_payload(merged)
+                        sig = _harness_state_signature(harness_ev)
+                        if sig != last_harness_sig:
+                            last_harness_sig = sig
+                            persist_task_harness_meta(
+                                str((config.get("configurable") or {}).get("thread_id") or "default"),
+                                merged,
+                            )
+                            yield harness_ev
+                for step in _parse_astream_event(event):
+                    if step.get("phase") == "thought":
+                        step = {**step, "content": _sanitize_stream_text(step.get("content") or "")}
+                        if not step["content"]:
+                            continue
+                    if step.get("phase") == "status" and "Agent 开始推理" in (step.get("content") or ""):
+                        if agent_started:
+                            continue
+                        agent_started = True
+                    yield step
+            if stuck_give_up_nudge:
+                if stuck_recovery_used:
                     break
-            chunk_state = _state_from_chain_event(event)
-            if chunk_state:
-                merged = merge_task_state(last_state, chunk_state)
-                last_state = merged
-                if merged.get("user_goal") or merged.get("harness_enabled"):
-                    harness_ev = task_harness_event_payload(merged)
-                    sig = _harness_state_signature(harness_ev)
-                    if sig != last_harness_sig:
-                        last_harness_sig = sig
-                        persist_task_harness_meta(
-                            str((config.get("configurable") or {}).get("thread_id") or "default"),
-                            merged,
-                        )
-                        yield harness_ev
-            for step in _parse_astream_event(event):
-                if step.get("phase") == "thought":
-                    step = {**step, "content": _sanitize_stream_text(step.get("content") or "")}
-                    if not step["content"]:
-                        continue
-                if step.get("phase") == "status" and "Agent 开始推理" in (step.get("content") or ""):
-                    if agent_started:
-                        continue
-                    agent_started = True
-                yield step
-        if stuck_give_up_nudge:
-            if stuck_recovery_used:
+                stuck_recovery_used = True
+                current_input = {"messages": [HumanMessage(content=stuck_give_up_nudge)]}
+                continue
+            reply, msgs, hitl = await _finalize_agent(
+                agent, config, collected=last_state or None
+            )
+            if hitl:
                 break
-            stuck_recovery_used = True
-            current_input = {"messages": [HumanMessage(content=stuck_give_up_nudge)]}
-            continue
-        reply, msgs, hitl = await _finalize_agent(
-            agent, config, collected=last_state or None
-        )
-        if hitl:
-            break
-        nudge = should_continue_task(last_state, msgs, reply)
-        if not nudge or continuations >= MAX_TASK_CONTINUATIONS:
-            break
-        continuations += 1
-        if last_state.get("harness_enabled"):
+            nudge = should_continue_task(last_state, msgs, reply)
+            if not nudge or continuations >= MAX_TASK_CONTINUATIONS:
+                break
+            continuations += 1
+            if last_state.get("harness_enabled"):
+                plan = list(last_state.get("plan") or [])
+                plan_index = int(last_state.get("plan_index") or 0)
+                from agent.harness import compute_task_phase
+
+                last_state = {
+                    **last_state,
+                    "task_phase": compute_task_phase(
+                        plan, plan_index, harness_enabled=True
+                    ),
+                }
+                from agent.harness import sync_run_context_from_values
+
+                thread_id = str((config.get("configurable") or {}).get("thread_id") or "default")
+                sync_run_context_from_values(thread_id, last_state)
             plan = list(last_state.get("plan") or [])
             plan_index = int(last_state.get("plan_index") or 0)
-            from agent.harness import compute_task_phase
-
-            last_state = {
-                **last_state,
-                "task_phase": compute_task_phase(
-                    plan, plan_index, harness_enabled=True
+            yield {
+                "type": "step",
+                "phase": "status",
+                "content": (
+                    f"检测到任务尚未全部完成（{min(plan_index + 1, len(plan))}/{len(plan)}），"
+                    "Agent 自动续跑…"
+                    if plan
+                    else "检测到外发/交付步骤尚未执行，Agent 继续运行…"
                 ),
             }
-            from agent.harness import sync_run_context_from_values
+            current_input = {"messages": [HumanMessage(content=nudge)]}
 
-            thread_id = str((config.get("configurable") or {}).get("thread_id") or "default")
-            sync_run_context_from_values(thread_id, last_state)
-        plan = list(last_state.get("plan") or [])
-        plan_index = int(last_state.get("plan_index") or 0)
-        yield {
-            "type": "step",
-            "phase": "status",
-            "content": (
-                f"检测到任务尚未全部完成（{min(plan_index + 1, len(plan))}/{len(plan)}），"
-                "Agent 自动续跑…"
-                if plan
-                else "检测到外发/交付步骤尚未执行，Agent 继续运行…"
-            ),
-        }
-        current_input = {"messages": [HumanMessage(content=nudge)]}
-
-    if last_state.get("user_goal") or last_state.get("harness_enabled"):
-        persist_task_harness_meta(
-            str((config.get("configurable") or {}).get("thread_id") or "default"),
-            last_state,
+        if last_state.get("user_goal") or last_state.get("harness_enabled"):
+            persist_task_harness_meta(
+                str((config.get("configurable") or {}).get("thread_id") or "default"),
+                last_state,
+            )
+            yield task_harness_event_payload(last_state)
+        finish_agent_turn(
+            thread_id,
+            turn_run=turn_run,
+            reply=reply,
+            hitl_pending=bool(hitl),
         )
-        yield task_harness_event_payload(last_state)
-    yield {"type": "_agent_result", "reply": reply, "messages": msgs, "hitl": hitl}
+        from observability.langsmith_trace import finalize_trace_for_session
+
+        langsmith = finalize_trace_for_session(
+            thread_id,
+            event_root_run_id=root_run_id,
+        )
+        yield {
+            "type": "_agent_result",
+            "reply": reply,
+            "messages": msgs,
+            "hitl": hitl,
+            "langsmith": langsmith,
+        }
 
 
 async def _iter_llm_only_events(
@@ -488,6 +545,7 @@ async def _stream_react_on_session(
     fresh_thread: bool,
     file_count: int,
     rag_context: str | None,
+    rag_mode: str | None,
     llm_config: dict | None,
     hitl_enabled: bool,
 ) -> AsyncIterator[dict[str, Any]]:
@@ -500,6 +558,7 @@ async def _stream_react_on_session(
         resume_action=resume_action,
         fresh_thread=fresh_thread,
         file_count=file_count,
+        rag_mode=rag_mode,
     )
     if resume_action is not None:
         pre_events = await _hitl_resume_pre_events(agent, config, session_id, resume_action)
@@ -508,7 +567,7 @@ async def _stream_react_on_session(
     else:
         pre_events = []
     async for ev in _iter_react_agent_events(
-        agent, input_data, config, pre_events=pre_events
+        agent, input_data, config, pre_events=pre_events, resume_action=resume_action
     ):
         yield ev
 
@@ -521,6 +580,7 @@ async def _stream_react_with_mcp_retry(
     fresh_thread: bool,
     file_count: int,
     rag_context: str | None,
+    rag_mode: str | None,
     llm_config: dict | None,
     hitl_enabled: bool,
 ) -> AsyncIterator[dict[str, Any]]:
@@ -538,6 +598,7 @@ async def _stream_react_with_mcp_retry(
                     fresh_thread=fresh_thread,
                     file_count=file_count,
                     rag_context=rag_context,
+                    rag_mode=rag_mode,
                     llm_config=llm_config,
                     hitl_enabled=hitl_enabled,
                 ):
@@ -579,6 +640,7 @@ async def stream_agent_with_history(
     file_count: int = 0,
     llm_config: dict | None = None,
     hitl_enabled: bool = True,
+    rag_mode: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """流式 ReAct；末尾 yield _agent_result（由路由转为 done / hitl_pending）。"""
     from core.app_utils import format_error
@@ -601,6 +663,7 @@ async def stream_agent_with_history(
         fresh_thread=True,
         file_count=file_count,
         rag_context=rag_context,
+        rag_mode=rag_mode,
         llm_config=llm_config,
         hitl_enabled=hitl_enabled,
     )
@@ -647,6 +710,7 @@ async def stream_agent_hitl_resume(
     log_prompt: bool = False,
     llm_config: dict | None = None,
     hitl_enabled: bool = True,
+    rag_mode: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     if not await _ensure_mcp_ready():
         raise RuntimeError("MCP 未就绪，无法恢复 HITL 会话")
@@ -670,6 +734,7 @@ async def stream_agent_hitl_resume(
             fresh_thread=False,
             file_count=0,
             rag_context=rag_context,
+            rag_mode=rag_mode,
             llm_config=llm_config,
             hitl_enabled=hitl_enabled,
         ):
@@ -696,6 +761,7 @@ def build_stream_done_payload(
     rag_mode: str,
     include_tool_debug: bool,
     agent_system_prompt: str,
+    langsmith_trace: dict | None = None,
 ) -> dict[str, Any]:
     attachments = extract_mcp_attachments_from_messages(msgs)
     out: dict[str, Any] = {
@@ -715,6 +781,8 @@ def build_stream_done_payload(
     if include_tool_debug:
         out["tool_debug"] = build_tool_debug_from_messages(msgs)
         out["prompt_debug"] = prompt_debug_payload(agent_system_prompt, rag_context)
+    if langsmith_trace:
+        out["langsmith"] = langsmith_trace
     return out
 
 
@@ -723,11 +791,12 @@ def build_stream_hitl_payload(
     session_id: str,
     hitl_pending: list[dict],
     rag_mode: str,
+    langsmith_trace: dict | None = None,
 ) -> dict[str, Any]:
     pending = hitl_pending[0] if hitl_pending else {}
     from agent.agent_service import hitl_available
 
-    return {
+    out: dict[str, Any] = {
         "type": "hitl_pending",
         "code": 0,
         "status": "hitl_pending",
@@ -743,3 +812,6 @@ def build_stream_hitl_payload(
         },
         "msg": "等待您确认是否执行敏感操作",
     }
+    if langsmith_trace:
+        out["langsmith"] = langsmith_trace
+    return out

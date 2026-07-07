@@ -56,6 +56,16 @@ PHASE_LABELS: dict[TaskPhase, str] = {
 DELIVER_KEYWORDS = ("发微信", "发送", "邮件", "导出", "export", "发给", "发到")
 PROCESS_KEYWORDS = ("表格", "整理", "汇总", "格式化", "format", "排列")
 
+# 外发/导出工具不受 gather/process 阶段 gate 限制（仍走 HITL 确认与重复外发检测）
+PHASE_GATE_EXEMPT_TOOLS: frozenset[str] = frozenset(
+    {
+        "send_email",
+        "send_wechat_message",
+        "send_wechat_files",
+        "export_to_excel",
+    }
+)
+
 
 class TaskHarnessState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]

@@ -22,6 +22,7 @@ from agent.task_checklist import (
     resolve_user_goal,
 )
 from agent.task_state import (
+    PHASE_GATE_EXEMPT_TOOLS,
     PHASE_LABELS,
     TaskPhase,
     allowed_tools_for_phase,
@@ -48,7 +49,8 @@ PHASE_GATE_ABANDON_MARKER = "已放弃"
 TASK_DISCIPLINE_PROMPT = (
     "\n\n【复杂任务执行纪律】\n"
     "1. 严格按「执行计划」推进，每次工具调用前说明当前在做哪一步。\n"
-    "2. 当前阶段仅可使用系统提示中列出的工具；阶段未到时不要调用外发/导出类工具。\n"
+    "2. 信息收集阶段优先 search/read；用户要求发邮件/微信/导出 Excel 时，可直接调用 "
+    "send_email、send_wechat_*、export_to_excel（执行前会弹出用户确认，不受阶段限制）。\n"
     "3. 工具返回后先更新进度，再决定下一步；若发现偏离用户原始目标，停止并说明。\n"
     "4. 未完成全部必要步骤前，不要给出最终结论。\n"
     "5. Gather 阶段若有多个独立搜索主题，优先使用 web_search_batch(queries=[...]) 并行检索。"
@@ -88,7 +90,51 @@ def _sync_run_context(thread_id: str, state: dict[str, Any]) -> None:
         "user_goal": state.get("user_goal") or "",
         "plan": list(state.get("plan") or []),
         "plan_index": int(state.get("plan_index") or 0),
+        "deliver_done_tools": set(_run_task_context.get(thread_id, {}).get("deliver_done_tools") or set()),
+        "user_turn_serial": int(_run_task_context.get(thread_id, {}).get("user_turn_serial") or 0),
     }
+
+
+def sync_run_context_deliver_state(thread_id: str, messages: list[BaseMessage]) -> None:
+    from agent.task_continue import (
+        count_real_user_messages,
+        get_deliver_done_tools,
+        sync_deliver_completion_flags,
+    )
+
+    tid = (thread_id or "default").strip() or "default"
+    sync_deliver_completion_flags(tid, messages)
+    ctx = _run_task_context.setdefault(tid, {})
+    ctx["deliver_done_tools"] = get_deliver_done_tools(tid)
+    ctx["user_turn_serial"] = count_real_user_messages(messages)
+
+
+def get_run_context_deliver_done(thread_id: str) -> set[str] | None:
+    tid = (thread_id or "default").strip() or "default"
+    ctx = _run_task_context.get(tid)
+    if ctx is None:
+        return None
+    done = ctx.get("deliver_done_tools")
+    if done is None:
+        return None
+    return set(done)
+
+
+def patch_deliver_done_in_run_context(thread_id: str, tool_name: str) -> None:
+    tid = (thread_id or "default").strip() or "default"
+    ctx = _run_task_context.setdefault(tid, {})
+    done = set(ctx.get("deliver_done_tools") or set())
+    done.add(tool_name)
+    ctx["deliver_done_tools"] = done
+
+
+def clear_run_context_deliver_state(thread_id: str) -> None:
+    tid = (thread_id or "default").strip() or "default"
+    ctx = _run_task_context.get(tid)
+    if ctx is None:
+        return
+    ctx.pop("deliver_done_tools", None)
+    ctx.pop("user_turn_serial", None)
 
 
 def _state_get(state: Any, key: str, default=None):
@@ -148,9 +194,11 @@ def build_reanchor_text(state: dict[str, Any]) -> str:
     elif completed:
         lines.append("已完成：" + "；".join(completed[-5:]))
     if _state_get(state, "harness_enabled"):
+        shown = sorted(set(allowed) | set(PHASE_GATE_EXEMPT_TOOLS))
+        lines.append("本阶段允许工具：" + ", ".join(shown))
         lines.append(
-            "本阶段允许工具："
-            + ", ".join(sorted(allowed))
+            "外发类工具（send_email / send_wechat_* / export_to_excel）随时可调用，"
+            "不受 gather/process 阶段限制。"
         )
     lines.append("请先确认当前步骤，再决定是否调用工具；不要偏离原始目标。")
     return "\n".join(lines)
@@ -252,13 +300,13 @@ def make_pre_model_hook():
         )
         from agent.task_continue import (
             deliver_tools_used,
-            sync_deliver_completion_flags,
+            goal_requires_gather,
             user_goal_requires_deliver,
         )
 
         thread_id = _thread_id_from_config(config)
         sync_abandoned_tools_from_messages(thread_id, messages)
-        sync_deliver_completion_flags(thread_id, messages)
+        sync_run_context_deliver_state(thread_id, messages)
 
         goal = (_state_get(state, "user_goal") or "").strip()
         if (
@@ -266,7 +314,9 @@ def make_pre_model_hook():
             and user_goal_requires_deliver(goal)
             and not deliver_tools_used(messages)
         ):
-            if plan and plan_index >= len(plan) - 1:
+            if not goal_requires_gather(goal):
+                task_phase = "deliver"
+            elif plan and plan_index >= len(plan) - 1:
                 task_phase = "deliver"
             elif plan and infer_phase_from_step(plan[-1]) == "deliver" and plan_index >= len(plan) - 2:
                 task_phase = "deliver"
@@ -295,8 +345,8 @@ def make_pre_model_hook():
             reanchor_text += abandon_nudge
         if deliver_tools_used(messages):
             reanchor_text += (
-                "\n\n【外发已完成】邮件/微信/导出已成功执行。"
-                "请直接向用户总结结果，勿再次调用 send_email、send_wechat_* 或 export_to_excel。"
+                "\n\n【本轮回发已完成】本轮用户请求中的邮件/微信/导出已成功执行。"
+                "请直接向用户总结结果，勿在本轮再次调用 send_email、send_wechat_* 或 export_to_excel。"
             )
         reanchor = SystemMessage(content=reanchor_text)
 
@@ -494,6 +544,12 @@ def _wrap_tool_phase(tool: BaseTool) -> BaseTool:
             result = await tool.ainvoke(kwargs)
             return result if isinstance(result, str) else str(result)
 
+        from agent.task_state import PHASE_GATE_EXEMPT_TOOLS
+
+        if name in PHASE_GATE_EXEMPT_TOOLS:
+            result = await tool.ainvoke(kwargs)
+            return result if isinstance(result, str) else str(result)
+
         phase: TaskPhase = ctx.get("task_phase") or "gather"
         allowed = allowed_tools_for_phase(phase, harness_enabled=True)
         if name not in allowed:
@@ -504,10 +560,24 @@ def _wrap_tool_phase(tool: BaseTool) -> BaseTool:
     def _gated_sync(**kwargs: Any) -> str:
         from langchain_core.runnables import ensure_config
 
+        from agent.task_continue import (
+            DELIVER_ACTION_TOOLS,
+            deliver_duplicate_block_message,
+            is_deliver_tool_done,
+        )
+
         config = ensure_config()
         thread_id = _thread_id_from_config(config)
+        if name in DELIVER_ACTION_TOOLS and is_deliver_tool_done(thread_id, name):
+            return deliver_duplicate_block_message(name)
         ctx = _run_task_context.get(thread_id, {})
         if not ctx.get("harness_enabled"):
+            result = tool.invoke(kwargs)
+            return result if isinstance(result, str) else str(result)
+
+        from agent.task_state import PHASE_GATE_EXEMPT_TOOLS
+
+        if name in PHASE_GATE_EXEMPT_TOOLS:
             result = tool.invoke(kwargs)
             return result if isinstance(result, str) else str(result)
 
@@ -611,10 +681,15 @@ async def prepare_agent_invoke(
     resume_action: str | None,
     fresh_thread: bool,
     file_count: int = 0,
+    rag_mode: str | None = None,
+    stream: bool = False,
 ) -> tuple[dict, Any, bool]:
     """准备 Agent config 与 input；返回 (config, input_data, is_continue_request)。"""
     from agent.agent_checkpointer import get_checkpointer, reset_agent_thread
     from config.app_config import AGENT_RECURSION_LIMIT
+    from observability.langsmith_config import enrich_agent_config
+    from observability.langsmith_session import peek_turn_index
+    from observability.langsmith_trace import attach_run_capture
 
     is_continue = False
     if lc_messages and resume_action is None:
@@ -628,13 +703,34 @@ async def prepare_agent_invoke(
         "configurable": {"thread_id": session_id},
         "recursion_limit": AGENT_RECURSION_LIMIT,
     } if checkpointer else {"recursion_limit": AGENT_RECURSION_LIMIT}
+    attach_run_capture(config, session_id)
+    turn_index = peek_turn_index(session_id, is_resume=resume_action is not None)
+    config = enrich_agent_config(
+        config,
+        session_id=session_id,
+        rag_mode=rag_mode,
+        stream=stream,
+        resume_action=resume_action,
+        turn_index=turn_index,
+    )
 
-    if checkpointer and fresh_thread and resume_action is None:
-        await reset_agent_thread(session_id)
-        import chat.chat_store as chat_store
+    if fresh_thread and resume_action is None:
+        if checkpointer:
+            await reset_agent_thread(session_id)
+            import chat.chat_store as chat_store
 
-        if not is_continue:
-            chat_store.clear_task_harness_meta(session_id)
+            if not is_continue:
+                chat_store.clear_task_harness_meta(session_id)
+        else:
+            from agent.task_continue import clear_deliver_flags
+
+            clear_deliver_flags(session_id)
+            clear_run_context(session_id)
+        if lc_messages:
+            from agent.task_continue import sync_deliver_completion_flags
+
+            sync_deliver_completion_flags(session_id, lc_messages)
+            sync_run_context_deliver_state(session_id, lc_messages)
 
     if resume_action is not None:
         return config, Command(resume={"action": resume_action}), False

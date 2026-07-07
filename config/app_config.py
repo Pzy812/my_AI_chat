@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from config.env_config import ensure_zhipuai_api_key_in_environ
+from observability.langsmith_config import configure_langsmith, public_status as langsmith_public_status
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 EXPORTS_DIR = (BASE_DIR / "exports").resolve()
@@ -28,6 +29,8 @@ if not logger.handlers:
     )
 
 ensure_zhipuai_api_key_in_environ()
+LANGSMITH_ENABLED = configure_langsmith()
+LANGSMITH_STATUS = langsmith_public_status()
 MCP_HOST = os.getenv("MCP_HOST", "localhost")
 MCP_PORT = int(os.getenv("MCP_PORT", "8090"))
 MCP_URL = f"http://{MCP_HOST}:{MCP_PORT}/mcp"

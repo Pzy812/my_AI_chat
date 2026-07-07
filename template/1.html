@@ -10,6 +10,7 @@
             if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
         })();
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -598,6 +599,203 @@
             text-transform: uppercase;
             margin-bottom: 0.25rem;
         }
+        .langsmith-panel {
+            border-color: rgba(148,163,184,0.35);
+            background: #f8fafc;
+            color: #0f172a;
+            padding: 0 !important;
+            overflow: hidden;
+        }
+        [data-theme="dark"] .langsmith-panel {
+            background: #f1f5f9;
+            color: #0f172a;
+        }
+        .ls-trace-header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.5rem;
+            padding: 0.65rem 0.85rem;
+            border-bottom: 1px solid #e2e8f0;
+            background: #fff;
+        }
+        .ls-trace-title {
+            font-size: 0.8125rem;
+            font-weight: 700;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .ls-trace-meta {
+            font-size: 0.6875rem;
+            color: #64748b;
+            padding: 0.45rem 0.85rem;
+            border-bottom: 1px solid #e2e8f0;
+            background: #fafafa;
+        }
+        .ls-trace-body {
+            display: grid;
+            grid-template-columns: minmax(220px, 38%) minmax(0, 1fr);
+            min-height: 280px;
+            max-height: 420px;
+        }
+        @media (max-width: 768px) {
+            .ls-trace-body { grid-template-columns: 1fr; max-height: none; }
+        }
+        .ls-waterfall {
+            border-right: 1px solid #e2e8f0;
+            overflow-y: auto;
+            background: #fff;
+        }
+        .ls-waterfall-head {
+            padding: 0.45rem 0.75rem;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #64748b;
+            border-bottom: 1px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .ls-waterfall-row {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.4rem 0.55rem;
+            font-size: 0.75rem;
+            border-bottom: 1px solid #f8fafc;
+            cursor: pointer;
+            transition: background 0.12s;
+            min-height: 2rem;
+        }
+        .ls-waterfall-row:hover { background: #f8fafc; }
+        .ls-waterfall-row.is-active {
+            background: #eff6ff;
+            border-left: 3px solid #3b82f6;
+            padding-left: calc(0.55rem - 3px);
+        }
+        .ls-status-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 999px;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.55rem;
+        }
+        .ls-status-dot.success { background: #dcfce7; color: #16a34a; }
+        .ls-status-dot.error { background: #fee2e2; color: #dc2626; }
+        .ls-status-dot.pending { background: #fef9c3; color: #ca8a04; }
+        .ls-run-name {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: #1e293b;
+            font-weight: 500;
+        }
+        .ls-run-type {
+            font-size: 0.625rem;
+            padding: 0.05rem 0.35rem;
+            border-radius: 4px;
+            background: #f1f5f9;
+            color: #64748b;
+            flex-shrink: 0;
+        }
+        .ls-run-latency {
+            font-size: 0.6875rem;
+            color: #64748b;
+            flex-shrink: 0;
+            font-variant-numeric: tabular-nums;
+        }
+        .ls-detail {
+            overflow-y: auto;
+            background: #fafafa;
+            display: flex;
+            flex-direction: column;
+        }
+        .ls-detail-head {
+            padding: 0.45rem 0.75rem;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            color: #64748b;
+            border-bottom: 1px solid #e2e8f0;
+            background: #fff;
+        }
+        .ls-detail-empty {
+            padding: 2rem 1rem;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 0.8125rem;
+        }
+        .ls-io-block {
+            margin: 0.65rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background: #fff;
+            overflow: hidden;
+        }
+        .ls-io-label {
+            padding: 0.35rem 0.65rem;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #64748b;
+            border-bottom: 1px solid #f1f5f9;
+            background: #f8fafc;
+        }
+        .ls-io-label.ai { color: #7c3aed; background: #f5f3ff; }
+        .ls-io-content {
+            padding: 0.65rem 0.75rem;
+            font-size: 0.8125rem;
+            line-height: 1.55;
+            color: #334155;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .ls-io-content.markdown h1, .ls-io-content.markdown h2, .ls-io-content.markdown h3 {
+            font-weight: 700;
+            margin: 0.5rem 0 0.35rem;
+        }
+        .ls-io-content.markdown ul, .ls-io-content.markdown ol {
+            margin: 0.35rem 0 0.35rem 1.1rem;
+        }
+        .ls-io-content.markdown p { margin: 0.25rem 0; }
+        .ls-io-content.markdown code {
+            background: #f1f5f9;
+            padding: 0.1rem 0.25rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+        .ls-loading {
+            padding: 1.5rem;
+            text-align: center;
+            color: #64748b;
+            font-size: 0.8125rem;
+        }
+        .langsmith-link-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #fff;
+            background: #10b981;
+            border: 1px solid #059669;
+            text-decoration: none;
+        }
+        .langsmith-link-btn:hover { background: #059669; }
         .reason-step.thought { border-color: rgba(56,189,248,0.28); }
         .reason-step.thought .reason-phase { color: #7dd3fc; }
         .reason-step.action { border-color: rgba(251,191,36,0.28); }
@@ -1054,6 +1252,10 @@
                         <input type="checkbox" id="cbToolDebug" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-sky-500">
                         <span>显示 MCP 工具调用详情</span>
                     </label>
+                    <label class="flex items-start gap-2 text-xs text-slate-400 cursor-pointer select-none">
+                        <input type="checkbox" id="cbShowLangSmith" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-emerald-500" checked>
+                        <span>显示 LangSmith Agent 追踪</span>
+                    </label>
                     <div class="flex flex-wrap items-center gap-3 text-xs text-slate-300">
                         <span class="text-slate-500 font-semibold">知识库</span>
                         <label class="flex items-center gap-1.5 cursor-pointer"><input type="radio" name="ragMode" value="rag" checked> 普通 RAG</label>
@@ -1075,6 +1277,36 @@
                     </p>
                     <p id="toolDebugSummary" class="text-xs text-slate-400 mb-3"></p>
                     <pre id="toolDebugPre" class="text-[11px] leading-relaxed whitespace-pre-wrap break-words max-h-60 overflow-y-auto rounded-lg bg-slate-900/80 p-3 border border-slate-700/50"></pre>
+                </div>
+                <div id="langsmithPanel" class="langsmith-panel hidden mb-4 rounded-2xl border">
+                    <div class="ls-trace-header">
+                        <div class="ls-trace-title">
+                            <i class="fa-solid fa-chart-network text-emerald-600"></i>
+                            <span id="langsmithTraceName">LangSmith Trace</span>
+                        </div>
+                        <a id="langsmithOpenLink" href="#" target="_blank" rel="noopener noreferrer" class="langsmith-link-btn hidden">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i> 在 LangSmith 查看会话
+                        </a>
+                        <a id="langsmithThreadLink" href="#" target="_blank" rel="noopener noreferrer" class="langsmith-link-btn hidden" style="background:#0369a1;margin-left:0.35rem;">
+                            <i class="fa-solid fa-layer-group"></i> Threads
+                        </a>
+                    </div>
+                    <div id="langsmithSummary" class="ls-trace-meta"></div>
+                    <div class="ls-trace-body">
+                        <div class="ls-waterfall">
+                            <div class="ls-waterfall-head">
+                                <span>Waterfall</span>
+                                <span id="langsmithStepCount" class="font-normal normal-case tracking-normal text-slate-400"></span>
+                            </div>
+                            <div id="langsmithWaterfall"></div>
+                        </div>
+                        <div class="ls-detail">
+                            <div class="ls-detail-head">Input / Output · Turns</div>
+                            <div id="langsmithDetail">
+                                <div class="ls-detail-empty">点击左侧步骤查看 Input / Output</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -1115,6 +1347,16 @@
                     <span>
                         <span class="text-sm font-semibold text-slate-200 block">Human-in-the-Loop</span>
                         <span class="field-hint block mt-0.5">开启后，发邮件、发微信、导出 Excel 等敏感操作需您在前端点击「确认执行」；关闭则直接执行。</span>
+                    </span>
+                </label>
+            </div>
+
+            <div class="settings-field">
+                <label class="flex items-start gap-2 cursor-pointer select-none">
+                    <input type="checkbox" id="cbShowLangSmithSettings" class="mt-0.5 rounded border-slate-600 bg-slate-800 text-emerald-500" checked>
+                    <span>
+                        <span class="text-sm font-semibold text-slate-200 block">LangSmith Agent 追踪</span>
+                        <span class="field-hint block mt-0.5">对话结束后在页面内展示与 LangSmith 官网类似的 Waterfall 执行树与 Input/Output；关闭则不在前端显示（后台仍会上报 trace）。</span>
                     </span>
                 </label>
             </div>
@@ -1182,8 +1424,13 @@
         const THEME_STORAGE_KEY = 'aiChatTheme';
         const LLM_CONFIG_STORAGE_KEY = 'aiChatLlmConfig';
         const HITL_ENABLED_STORAGE_KEY = 'aiChatHitlEnabled';
+        const LANGSMITH_STORAGE_KEY = 'aiChatShowLangSmith';
         const SSE_IDLE_TIMEOUT_MS = 300000;
         let serverLlmDefaults = null;
+        let langsmithServerEnabled = false;
+        let langsmithTraceCache = null;
+        let langsmithSelectedRunId = null;
+        let langsmithLoadSeq = 0;
         let activeLlmProvider = 'zhipu';
 
         window.onload = function () {
@@ -1191,6 +1438,7 @@
             initRagModeSelector();
             initReasoningCheckbox();
             initReasoningExpandedCheckbox();
+            initLangSmithCheckbox();
             initLlmSettings();
             initHitlSettings();
             loadServiceStatus();
@@ -1263,6 +1511,13 @@
                     banner.classList.add('warn');
                     textEl.textContent = '服务端 HITL 未启用：敏感操作将直接执行。请重启 app.py 并确保 HITL_ENABLED=1';
                 }
+                langsmithServerEnabled = !!(res.langsmith && res.langsmith.enabled);
+                const lsEnabled = isLangSmithDisplayEnabled();
+                syncLangSmithCheckboxes(lsEnabled && langsmithServerEnabled);
+                ['cbShowLangSmith', 'cbShowLangSmithSettings'].forEach(function (id) {
+                    const el = document.getElementById(id);
+                    if (el) el.disabled = !langsmithServerEnabled;
+                });
             } catch (e) {
                 banner.classList.remove('hidden');
                 banner.classList.add('warn');
@@ -1290,6 +1545,10 @@
             const cb = document.getElementById('cbHitlEnabled');
             if (!cb) return;
             cb.checked = localStorage.getItem(HITL_ENABLED_STORAGE_KEY) !== '0';
+        }
+
+        function syncLangSmithSettingsUi() {
+            syncLangSmithCheckboxes(isLangSmithDisplayEnabled() && langsmithServerEnabled);
         }
 
         function refreshSessionsLater() {
@@ -1665,6 +1924,7 @@
         function openLlmSettings() {
             fillLlmSettingsForm(getLlmConfig());
             syncHitlSettingsUi();
+            syncLangSmithSettingsUi();
             const modal = document.getElementById('llmSettingsModal');
             if (modal) modal.classList.remove('hidden');
         }
@@ -2426,6 +2686,317 @@
             if (p) p.classList.add('hidden');
         }
 
+        function isLangSmithDisplayEnabled() {
+            const saved = localStorage.getItem(LANGSMITH_STORAGE_KEY);
+            return saved !== '0';
+        }
+
+        function syncLangSmithCheckboxes(checked) {
+            ['cbShowLangSmith', 'cbShowLangSmithSettings'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.checked = checked;
+            });
+        }
+
+        function initLangSmithCheckbox() {
+            const savedOff = localStorage.getItem(LANGSMITH_STORAGE_KEY) === '0';
+            syncLangSmithCheckboxes(!savedOff);
+            function onToggle(checked) {
+                localStorage.setItem(LANGSMITH_STORAGE_KEY, checked ? '1' : '0');
+                syncLangSmithCheckboxes(checked);
+                if (!checked) hideLangSmithPanel();
+                else if (langsmithTraceCache) showLangSmithTrace(langsmithTraceCache);
+            }
+            ['cbShowLangSmith', 'cbShowLangSmithSettings'].forEach(function (id) {
+                const cb = document.getElementById(id);
+                if (!cb) return;
+                cb.addEventListener('change', function () {
+                    onToggle(cb.checked);
+                });
+            });
+        }
+
+        function wantLangSmithPanel() {
+            return langsmithServerEnabled && isLangSmithDisplayEnabled();
+        }
+
+        function hideLangSmithPanel() {
+            const p = document.getElementById('langsmithPanel');
+            if (p) p.classList.add('hidden');
+        }
+
+        function lsStatusIcon(status) {
+            const s = (status || '').toLowerCase();
+            if (s === 'success' || s === 'completed') {
+                return '<span class="ls-status-dot success"><i class="fa-solid fa-check"></i></span>';
+            }
+            if (s === 'error' || s === 'failed') {
+                return '<span class="ls-status-dot error"><i class="fa-solid fa-xmark"></i></span>';
+            }
+            return '<span class="ls-status-dot pending"><i class="fa-solid fa-minus"></i></span>';
+        }
+
+        function lsRunTypeBadge(runType) {
+            const t = (runType || 'run').toLowerCase();
+            return '<span class="ls-run-type">' + escapeHtml(t) + '</span>';
+        }
+
+        function lsFormatLatency(node) {
+            if (node.latency) return node.latency;
+            if (node.latency_ms != null) return (node.latency_ms / 1000).toFixed(2) + 's';
+            return '';
+        }
+
+        function lsRenderMarkdown(text) {
+            const raw = (text || '').trim();
+            if (!raw) return '';
+            try {
+                if (window.marked && typeof window.marked.parse === 'function') {
+                    return window.marked.parse(raw, { breaks: true, gfm: true });
+                }
+            } catch (e) { /* fallback */ }
+            return escapeHtml(raw);
+        }
+
+        function lsIoBlock(label, text, opts) {
+            const isAi = opts && opts.ai;
+            const useMarkdown = opts && opts.markdown;
+            if (!text) return '';
+            const body = useMarkdown
+                ? '<div class="ls-io-content markdown">' + lsRenderMarkdown(text) + '</div>'
+                : '<div class="ls-io-content">' + escapeHtml(text) + '</div>';
+            return (
+                '<div class="ls-io-block">' +
+                '<div class="ls-io-label' + (isAi ? ' ai' : '') + '">' + escapeHtml(label) + '</div>' +
+                body + '</div>'
+            );
+        }
+
+        function lsSerializeIo(obj) {
+            if (obj == null) return '';
+            if (typeof obj === 'string') return obj;
+            try {
+                return JSON.stringify(obj, null, 2);
+            } catch (e) {
+                return String(obj);
+            }
+        }
+
+        function renderLangSmithDetail(node) {
+            const box = document.getElementById('langsmithDetail');
+            if (!box || !node) return;
+            langsmithSelectedRunId = node.id;
+            const parts = [];
+            parts.push(
+                '<div class="px-3 py-2 text-xs text-slate-500 border-b border-slate-200 bg-white">' +
+                escapeHtml(node.name || '') + ' · ' + escapeHtml(node.run_type || '') +
+                (node.latency ? (' · ' + escapeHtml(node.latency)) : '') +
+                (node.tokens != null ? (' · ' + node.tokens + ' tokens') : '') +
+                '</div>'
+            );
+            if (node.error) {
+                parts.push(lsIoBlock('Error', String(node.error), {}));
+            }
+            const inText = node.input_text || lsSerializeIo(node.inputs);
+            const outText = node.output_text || lsSerializeIo(node.outputs);
+            if (inText) {
+                parts.push(lsIoBlock('Input', inText, { markdown: node.run_type === 'llm' }));
+            }
+            if (outText) {
+                parts.push(lsIoBlock(node.run_type === 'llm' ? 'AI' : 'Output', outText, {
+                    ai: node.run_type === 'llm',
+                    markdown: node.run_type === 'llm'
+                }));
+            }
+            if (!inText && !outText && !node.error) {
+                parts.push('<div class="ls-detail-empty">该步骤无 Input/Output 预览</div>');
+            }
+            box.innerHTML = parts.join('');
+        }
+
+        function clearLangSmithDetail() {
+            const box = document.getElementById('langsmithDetail');
+            if (box) {
+                box.innerHTML = '<div class="ls-detail-empty">点击左侧步骤查看 Input / Output</div>';
+            }
+        }
+
+        function renderLangSmithWaterfall(waterfall, opts) {
+            const box = document.getElementById('langsmithWaterfall');
+            const countEl = document.getElementById('langsmithStepCount');
+            const loading = opts && opts.loading;
+            if (!box) return;
+            box.innerHTML = '';
+            if (loading) {
+                box.innerHTML = '<div class="ls-loading"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>正在从 LangSmith 同步 trace…</div>';
+                if (countEl) countEl.textContent = '';
+                return;
+            }
+            if (!waterfall || !waterfall.length) {
+                box.innerHTML = '<div class="ls-loading text-slate-500">本回合暂无可展示的步骤（可点击「在 LangSmith 查看会话」展开整棵 session trace）</div>';
+                if (countEl) countEl.textContent = '0 steps';
+                clearLangSmithDetail();
+                return;
+            }
+            if (countEl) countEl.textContent = waterfall.length + ' steps';
+            langsmithSelectedRunId = null;
+            waterfall.forEach(function (node, idx) {
+                const row = document.createElement('div');
+                row.className = 'ls-waterfall-row';
+                row.style.paddingLeft = (0.55 + (node.depth || 0) * 0.85) + 'rem';
+                row.dataset.runId = node.id || '';
+                row.innerHTML =
+                    lsStatusIcon(node.status) +
+                    '<span class="ls-run-name" title="' + escapeHtml(node.name || '') + '">' + escapeHtml(node.name || '(unnamed)') + '</span>' +
+                    lsRunTypeBadge(node.run_type) +
+                    '<span class="ls-run-latency">' + escapeHtml(lsFormatLatency(node)) + '</span>';
+                row.addEventListener('click', function () {
+                    box.querySelectorAll('.ls-waterfall-row').forEach(function (r) { r.classList.remove('is-active'); });
+                    row.classList.add('is-active');
+                    renderLangSmithDetail(node);
+                });
+                box.appendChild(row);
+                if (idx === 0) {
+                    row.classList.add('is-active');
+                    renderLangSmithDetail(node);
+                }
+            });
+        }
+
+        function renderLangSmithMeta(trace) {
+            const sum = document.getElementById('langsmithSummary');
+            const title = document.getElementById('langsmithTraceName');
+            const sessionLabel = trace.session_id || trace.thread_id || '';
+            const turnLabel = trace.turn != null ? (' · 第 ' + trace.turn + ' 轮') : '';
+            if (title) title.textContent = (trace.name || 'session') + turnLabel;
+            if (!sum || !trace) return;
+            sum.innerHTML =
+                '<strong>' + escapeHtml(trace.project || 'my_agent') + '</strong>' +
+                (sessionLabel ? (' · 会话 <code style="font-size:10px">' + escapeHtml(String(sessionLabel).slice(0, 24)) + '</code>') : '') +
+                ' · 状态 <strong>' + escapeHtml(trace.status || '—') + '</strong>' +
+                ' · LLM <strong>' + (trace.llm_calls || 0) + '</strong>' +
+                ' · 工具 <strong>' + (trace.tool_calls || 0) + '</strong>' +
+                (trace.latency ? (' · 总耗时 <strong>' + escapeHtml(trace.latency) + '</strong>') : '') +
+                (trace.total_tokens != null ? (' · tokens <strong>' + trace.total_tokens + '</strong>') : '') +
+                (trace.run_id ? (' · <code style="font-size:10px">' + escapeHtml(trace.run_id.slice(0, 22)) + '…</code>') : '');
+        }
+
+        function syncLangSmithLinks(ls) {
+            const link = document.getElementById('langsmithOpenLink');
+            const threadLink = document.getElementById('langsmithThreadLink');
+            const runId = ls.run_id || ls.session_root_run_id || '';
+            const threadUrl = ls.thread_url || '';
+            if (link) {
+                if (ls.url && runId) {
+                    link.href = ls.url;
+                    link.classList.remove('hidden');
+                } else {
+                    link.classList.add('hidden');
+                }
+            }
+            if (threadLink) {
+                if (threadUrl) {
+                    threadLink.href = threadUrl;
+                    threadLink.classList.remove('hidden');
+                } else {
+                    threadLink.classList.add('hidden');
+                }
+            }
+        }
+
+        function showLangSmithTrace(ls) {
+            if (!ls || !ls.enabled) return;
+            langsmithTraceCache = ls;
+            if (!wantLangSmithPanel()) {
+                hideLangSmithPanel();
+                return;
+            }
+            const p = document.getElementById('langsmithPanel');
+            const link = document.getElementById('langsmithOpenLink');
+            if (!p) return;
+            langsmithLoadSeq += 1;
+            p.classList.remove('hidden');
+            const runId = ls.run_id || ls.session_root_run_id || '';
+            syncLangSmithLinks(ls);
+            clearLangSmithDetail();
+            const wf = (ls.summary && (ls.summary.waterfall || ls.summary.steps)) || [];
+            if (ls.summary && wf.length) {
+                renderLangSmithMeta(Object.assign({}, ls.summary, {
+                    session_id: ls.session_id,
+                    thread_id: ls.thread_id,
+                    turn: ls.turn,
+                    project: ls.project
+                }));
+                renderLangSmithWaterfall(wf);
+            } else if (runId) {
+                renderLangSmithMeta({
+                    name: ls.summary && ls.summary.name ? ls.summary.name : ('session:' + (ls.session_id || '').slice(0, 12)),
+                    project: ls.project,
+                    session_id: ls.session_id,
+                    thread_id: ls.thread_id,
+                    turn: ls.turn,
+                    run_id: runId,
+                    status: 'loading'
+                });
+                renderLangSmithWaterfall([], { loading: true });
+                loadLangSmithTraceDetail(runId, 0, langsmithLoadSeq);
+            } else {
+                renderLangSmithMeta({ name: 'Trace', project: ls.project, status: ls.status || 'pending' });
+                renderLangSmithWaterfall([]);
+            }
+            scrollChatToBottom(true);
+        }
+
+        async function loadLangSmithTraceDetail(runId, attempt, loadSeq) {
+            if (!runId || !wantLangSmithPanel()) return;
+            const seq = loadSeq != null ? loadSeq : langsmithLoadSeq;
+            const n = attempt || 0;
+            const waterfallBox = document.getElementById('langsmithWaterfall');
+            try {
+                const url = apiBase() + '/observability/langsmith/trace?run_id=' +
+                    encodeURIComponent(runId) + '&retries=5&delay=1.0';
+                const res = await fetch(url).then(function (r) { return r.json(); });
+                if (seq !== langsmithLoadSeq) return;
+                if (res.code !== 0 || !res.trace) {
+                    if (n < 4) {
+                        if (waterfallBox) {
+                            waterfallBox.innerHTML = '<div class="ls-loading"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>LangSmith 同步中… (' + (n + 1) + '/4)</div>';
+                        }
+                        setTimeout(function () { loadLangSmithTraceDetail(runId, n + 1, seq); }, 1800);
+                        return;
+                    }
+                    if (waterfallBox) {
+                        waterfallBox.innerHTML = '<div class="ls-loading text-amber-700">trace 尚未就绪，请点击右上角在 LangSmith 打开</div>';
+                    }
+                    return;
+                }
+                const t = res.trace;
+                syncLangSmithLinks(Object.assign({}, langsmithTraceCache || {}, {
+                    url: t.url,
+                    thread_url: (langsmithTraceCache && langsmithTraceCache.thread_url) || '',
+                    run_id: t.run_id || runId,
+                    session_root_run_id: (langsmithTraceCache && langsmithTraceCache.session_root_run_id) || ''
+                }));
+                langsmithTraceCache = Object.assign({}, langsmithTraceCache || {}, {
+                    summary: t,
+                    run_id: t.run_id || runId,
+                    url: t.url || (langsmithTraceCache && langsmithTraceCache.url)
+                });
+                renderLangSmithMeta(Object.assign({}, t, {
+                    session_id: langsmithTraceCache.session_id,
+                    thread_id: langsmithTraceCache.thread_id,
+                    turn: langsmithTraceCache.turn
+                }));
+                renderLangSmithWaterfall(t.waterfall || t.steps || []);
+            } catch (e) {
+                if (seq !== langsmithLoadSeq) return;
+                console.warn('LangSmith trace 加载失败', e);
+                if (waterfallBox) {
+                    waterfallBox.innerHTML = '<div class="ls-loading text-red-600">加载失败：' + escapeHtml(String(e.message || e)) + '</div>';
+                }
+            }
+        }
+
         function showToolDebug(tb) {
             const p = document.getElementById('toolDebugPanel');
             const pre = document.getElementById('toolDebugPre');
@@ -2602,6 +3173,7 @@
             const res = await api('/chat/clear', { session_id: getSessionId() });
             showToast(res.msg || (res.code === 0 ? '已清空' : '失败'), res.code === 0 ? 'success' : 'error');
             hideToolDebug();
+            hideLangSmithPanel();
             await loadChatHistory();
             await loadSessions();
         }
@@ -2777,6 +3349,7 @@
             }
             if (isHitlPending(res)) {
                 if (pendingRow) mountHitlPanel(pendingRow, res.hitl, hitlContext);
+                if (res.langsmith) showLangSmithTrace(res.langsmith);
                 setChatStatusLine('仍有待确认的操作');
                 showToast('请继续确认下一项操作', 'success');
                 return;
@@ -2787,7 +3360,8 @@
                 finalizePendingAsAssistant(pendingRow, res, currentReasoningSteps.slice());
                 const modeText = res.rag_mode === 'graphrag' ? 'GraphRAG' : (res.rag_used ? 'RAG' : '');
                 setChatStatusLine(res.rag_used ? ('已完成 · 已使用 ' + modeText + ' 检索') : '已完成');
-                if (savedWantDebug && res.tool_debug) showToolDebug(res.tool_debug);
+                if (wantDebug && res.tool_debug) showToolDebug(res.tool_debug);
+                if (res.langsmith) showLangSmithTrace(res.langsmith);
             } else {
                 if (pendingRow) pendingRow.remove();
                 setChatStatusLine(res.msg || '操作失败');
@@ -2807,6 +3381,7 @@
 
             const wantDebug = document.getElementById('cbToolDebug').checked;
             hideToolDebug();
+            hideLangSmithPanel();
 
             setChatUiLocked(true);
             resetReasoningSteps();
@@ -2890,6 +3465,7 @@
 
             if (isHitlPending(res)) {
                 mountHitlPanel(pending, res.hitl, hitlCtx);
+                if (res.langsmith) showLangSmithTrace(res.langsmith);
                 setChatStatusLine('等待您确认是否执行：' + (res.hitl && (res.hitl.label || res.hitl.tool) || '敏感操作'));
                 showToast('请点「确认执行」继续；勿发送新消息', 'success');
                 return;
@@ -2900,6 +3476,7 @@
                 const modeText = res.rag_mode === 'graphrag' ? 'GraphRAG' : (res.rag_used ? 'RAG' : '');
                 setChatStatusLine(res.rag_used ? ('已写入 · 已使用 ' + modeText + ' 检索') : '已写入');
                 if (wantDebug && res.tool_debug) showToolDebug(res.tool_debug);
+                if (res.langsmith) showLangSmithTrace(res.langsmith);
             } else {
                 const pend = document.getElementById('chatPendingAssistant');
                 if (pend) pend.remove();

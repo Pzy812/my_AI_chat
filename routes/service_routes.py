@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify
 import app_mcp.mcp_lifecycle as mcp_lifecycle
 from agent.agent_checkpointer import checkpointer_kind, enabled as checkpointer_ready
 from agent.agent_service import hitl_available
-from config.app_config import AGENT_CHECKPOINT_ENABLED, HITL_ENABLED, POSTGRES_URI
+from config.app_config import AGENT_CHECKPOINT_ENABLED, HITL_ENABLED, LANGSMITH_STATUS, POSTGRES_URI
 
 bp = Blueprint("service", __name__)
 
@@ -25,6 +25,7 @@ def service_status():
             "checkpointer_ready": checkpointer_ready(),
             "postgres_configured": bool(POSTGRES_URI),
             "agent_checkpoint_enabled": AGENT_CHECKPOINT_ENABLED,
+            "langsmith": LANGSMITH_STATUS,
         }
     )
 

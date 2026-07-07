@@ -4,6 +4,7 @@ from __future__ import annotations
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from agent.harness import count_tool_rounds, trim_messages_for_llm
+from agent.task_state import PHASE_GATE_EXEMPT_TOOLS, allowed_tools_for_phase
 
 
 def test_count_tool_rounds():
@@ -35,3 +36,10 @@ def test_trim_messages_keeps_first_user_and_tail():
     trimmed = trim_messages_for_llm(messages, keep_recent=5)
     assert trimmed[0] is first
     assert len(trimmed) == 6
+
+
+def test_deliver_tools_exempt_from_gather_phase_gate():
+    gather_allowed = allowed_tools_for_phase("gather", harness_enabled=True)
+    assert "send_email" not in gather_allowed
+    assert "send_email" in PHASE_GATE_EXEMPT_TOOLS
+    assert "export_to_excel" in PHASE_GATE_EXEMPT_TOOLS
