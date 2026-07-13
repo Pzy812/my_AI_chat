@@ -1,16 +1,14 @@
-"""在 Flask 同步请求中统一使用单一后台 event loop 执行协程。
+"""FastAPI / uvicorn 主事件循环上的协程调度与可取消运行跟踪。
 
-AsyncPostgresSaver / AsyncConnectionPool 内的 asyncio.Lock 会绑定创建时的 loop。
-若启动时用 asyncio.run() 初始化、请求里再次 asyncio.run()，会触发：
-「Lock is bound to a different event loop」
+AsyncPostgresSaver / AsyncConnectionPool 内的 asyncio.Lock 会绑定创建时的 loop，
+因此 Checkpointer 与 Agent 必须在同一 loop（uvicorn 主循环）上初始化与执行。
 """
 from __future__ import annotations
 
 import asyncio
 import sys
 import threading
-from collections.abc import AsyncIterator, Coroutine, Iterator
-from queue import Empty, Queue
+from collections.abc import Coroutine
 from typing import Any, TypeVar
 
 T = TypeVar("T")
@@ -32,10 +30,7 @@ def _restore_asyncio_create_task() -> None:
 
 _restore_asyncio_create_task()
 
-_loop: asyncio.AbstractEventLoop | None = None
-_thread: threading.Thread | None = None
-_ready = threading.Event()
-_lock = threading.Lock()
+_main_loop: asyncio.AbstractEventLoop | None = None
 _runs_lock = threading.Lock()
 _active_runs: dict[str, asyncio.Future[Any]] = {}
 
@@ -45,32 +40,14 @@ def _ensure_windows_selector_policy() -> None:
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
-def _loop_thread_main(loop: asyncio.AbstractEventLoop) -> None:
-    asyncio.set_event_loop(loop)
-    _ready.set()
-    loop.run_forever()
+def set_main_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """在 FastAPI lifespan 中绑定 uvicorn 主事件循环。"""
+    global _main_loop
+    _main_loop = loop
 
 
-def ensure_loop() -> asyncio.AbstractEventLoop:
-    """获取（或启动）全局后台 event loop。"""
-    global _loop, _thread
-    with _lock:
-        if _loop is not None and _loop.is_running():
-            return _loop
-        _ensure_windows_selector_policy()
-        _ready.clear()
-        loop = asyncio.new_event_loop()
-        _thread = threading.Thread(
-            target=_loop_thread_main,
-            args=(loop,),
-            name="ai-chat-async-loop",
-            daemon=True,
-        )
-        _thread.start()
-        if not _ready.wait(timeout=30):
-            raise RuntimeError("后台 asyncio 事件循环启动超时")
-        _loop = loop
-        return _loop
+def get_main_loop() -> asyncio.AbstractEventLoop | None:
+    return _main_loop
 
 
 def _register_run(run_key: str, future: asyncio.Future[Any]) -> None:
@@ -87,24 +64,54 @@ def _unregister_run(run_key: str, future: asyncio.Future[Any]) -> None:
             _active_runs.pop(run_key, None)
 
 
+def register_run(run_key: str, future: asyncio.Future[Any]) -> None:
+    _register_run(run_key, future)
+
+
+def unregister_run(run_key: str, future: asyncio.Future[Any]) -> None:
+    _unregister_run(run_key, future)
+
+
 def cancel_active_run(run_key: str) -> bool:
     """取消指定 session 正在执行的 Agent 协程（供用户主动打断）。"""
     with _runs_lock:
         future = _active_runs.get(run_key)
     if future is None or future.done():
         return False
-    cancelled = future.cancel()
-    # cancel() 仅协作式；若 loop 正被同步代码占用，仍尝试唤醒以便尽快处理 CancelledError
-    loop = _loop
-    if loop is not None and loop.is_running():
-        loop.call_soon_threadsafe(lambda: None)
-    return cancelled
+    return bool(future.cancel())
 
 
 def schedule_async(coro: Coroutine[Any, Any, Any]) -> None:
-    """在后台 loop 上调度协程，不阻塞 Flask 请求线程。"""
-    loop = ensure_loop()
+    """在主 loop 上调度协程（不阻塞调用方）。"""
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+
+    if running is not None:
+        running.create_task(coro)
+        return
+
+    loop = _main_loop
+    if loop is None or not loop.is_running():
+        raise RuntimeError("主事件循环尚未就绪，无法 schedule_async")
     asyncio.run_coroutine_threadsafe(coro, loop)
+
+
+async def run_cancellable(
+    coro: Coroutine[Any, Any, T],
+    *,
+    run_key: str | None = None,
+) -> T:
+    """在当前 loop 上执行协程，并按 run_key 登记以便 /chat/cancel 取消。"""
+    task = asyncio.ensure_future(coro)
+    if run_key:
+        _register_run(run_key, task)
+    try:
+        return await task
+    finally:
+        if run_key:
+            _unregister_run(run_key, task)
 
 
 def run_async(
@@ -113,8 +120,21 @@ def run_async(
     timeout: float | None = None,
     run_key: str | None = None,
 ) -> T:
-    """在后台 loop 上运行协程并阻塞等待结果（供 Flask 路由调用）。"""
-    loop = ensure_loop()
+    """从同步线程阻塞等待协程结果（不可在主事件循环线程内调用）。"""
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        running = None
+
+    loop = _main_loop
+    if loop is None or not loop.is_running():
+        raise RuntimeError("主事件循环尚未就绪，无法 run_async")
+
+    if running is not None and running is loop:
+        raise RuntimeError(
+            "run_async() 不能在主事件循环内调用，请改用 await / run_cancellable / schedule_async"
+        )
+
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     if run_key:
         _register_run(run_key, future)
@@ -127,79 +147,23 @@ def run_async(
             _unregister_run(run_key, future)
 
 
-def iter_sync_from_async_gen(
-    async_gen: AsyncIterator[T],
-    *,
-    timeout: float | None = None,
-    run_key: str | None = None,
-) -> Iterator[T]:
-    """将后台 loop 上的 async generator 桥接为 Flask SSE 可用的同步 generator。"""
-    loop = ensure_loop()
-    queue: Queue[tuple[str, Any]] = Queue()
-
-    async def _pump() -> None:
-        try:
-            async for item in async_gen:
-                queue.put(("item", item))
-        except asyncio.CancelledError:
-            try:
-                await async_gen.aclose()
-            except Exception:
-                pass
-            raise
-        except BaseException as e:
-            queue.put(("error", e))
-        finally:
-            queue.put(("done", None))
-
-    future = asyncio.run_coroutine_threadsafe(_pump(), loop)
-    if run_key:
-        _register_run(run_key, future)
-    try:
-        while True:
-            try:
-                kind, payload = queue.get(timeout=timeout)
-            except Empty:
-                raise TimeoutError("流式 Agent 等待事件超时") from None
-            if kind == "done":
-                break
-            if kind == "error":
-                raise payload
-            yield payload
-    finally:
-        if run_key:
-            _unregister_run(run_key, future)
-        if not future.done():
-            future.cancel()
-        try:
-            future.result(timeout=5)
-        except Exception:
-            pass
-
-
-def setup_async_services() -> None:
-    """应用启动：在同一后台 loop 上初始化 Checkpointer。"""
+async def setup_async_services() -> None:
+    """应用启动：在主 loop 上初始化 Checkpointer。"""
     from agent.agent_checkpointer import init_checkpointer
 
-    run_async(init_checkpointer())
+    set_main_loop(asyncio.get_running_loop())
+    await init_checkpointer()
 
 
-def shutdown_async_services() -> None:
-    """可选：关闭后台 loop（进程退出时 daemon 线程会自动结束）。"""
-    global _loop, _thread
-    loop = _loop
-    if loop is None or not loop.is_running():
-        return
+async def shutdown_async_services() -> None:
+    """应用关闭：释放 Checkpointer 与 MCP 客户端。"""
+    global _main_loop
     try:
         from agent.agent_checkpointer import shutdown_checkpointer
         from app_mcp.mcp_http_client import get_mcp_manager
 
-        run_async(shutdown_checkpointer(), timeout=15)
-        run_async(get_mcp_manager().close(), timeout=10)
+        await shutdown_checkpointer()
+        await get_mcp_manager().close()
     except Exception:
         pass
-    loop.call_soon_threadsafe(loop.stop)
-    if _thread is not None:
-        _thread.join(timeout=5)
-    _loop = None
-    _thread = None
+    _main_loop = None

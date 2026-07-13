@@ -1,5 +1,6 @@
-flask
-flask-cors
+fastapi
+uvicorn[standard]
+python-multipart
 redis
 langchain-community
 langchain-core

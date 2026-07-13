@@ -79,8 +79,22 @@ async def _fetch_mcp_tool_names_async() -> set[str]:
     return {t.name for t in page.tools}
 
 
+async def mcp_tool_names_async() -> set[str] | None:
+    """异步拉取当前 MCP 已注册工具名；连接失败时返回 None。"""
+    if not mcp_port_open():
+        return None
+    try:
+        return await _fetch_mcp_tool_names_async()
+    except Exception as e:
+        logger.warning("无法读取 MCP 工具列表: %s", e)
+        return None
+
+
 def mcp_tool_names() -> set[str] | None:
-    """拉取当前 MCP 已注册工具名；连接失败时返回 None。"""
+    """拉取当前 MCP 已注册工具名；连接失败时返回 None。
+
+    同步调用方（非主事件循环线程）可用；在 FastAPI 路由内请用 mcp_tool_names_async。
+    """
     if not mcp_port_open():
         return None
     try:
@@ -96,6 +110,32 @@ _mcp_status_cache: tuple[float, str] | None = None
 _MCP_STATUS_CACHE_SEC = 45.0
 
 
+def _status_from_names(names: set[str] | None) -> str:
+    if names is None:
+        return "unknown"
+    if REQUIRED_WECHAT_MCP_TOOLS.issubset(names):
+        return "ok"
+    return "missing"
+
+
+async def mcp_wechat_tools_status_async(*, force: bool = False) -> str:
+    """异步返回微信工具探测结果：ok / missing / unknown。"""
+    global _mcp_status_cache
+    import time
+
+    now = time.time()
+    if (
+        not force
+        and _mcp_status_cache is not None
+        and now - _mcp_status_cache[0] < _MCP_STATUS_CACHE_SEC
+    ):
+        return _mcp_status_cache[1]
+
+    status = _status_from_names(await mcp_tool_names_async())
+    _mcp_status_cache = (now, status)
+    return status
+
+
 def mcp_wechat_tools_status(*, force: bool = False) -> str:
     """返回微信工具探测结果：ok / missing / unknown。"""
     global _mcp_status_cache
@@ -109,13 +149,7 @@ def mcp_wechat_tools_status(*, force: bool = False) -> str:
     ):
         return _mcp_status_cache[1]
 
-    names = mcp_tool_names()
-    if names is None:
-        status = "unknown"
-    elif REQUIRED_WECHAT_MCP_TOOLS.issubset(names):
-        status = "ok"
-    else:
-        status = "missing"
+    status = _status_from_names(mcp_tool_names())
     _mcp_status_cache = (now, status)
     return status
 

@@ -80,4 +80,4 @@ else:
 time.sleep(0.8)
 PY
 
-exec python app.py
+exec python -m uvicorn app:app --host 0.0.0.0 --port "${APP_PORT:-${FLASK_PORT:-5001}}"

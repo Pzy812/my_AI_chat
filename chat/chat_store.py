@@ -143,10 +143,11 @@ def clear_session(session_id: str) -> None:
 
 def _clear_agent_checkpoint(session_id: str) -> None:
     from agent.agent_checkpointer import reset_agent_thread
-    from core.async_runner import run_async
+    from core.async_runner import schedule_async
 
     try:
-        run_async(reset_agent_thread(session_id), timeout=15)
+        # 勿在主 loop 上阻塞等待 reset（会与仍在跑的 Agent 争抢 / 死锁）
+        schedule_async(reset_agent_thread(session_id))
     except Exception:
         pass
 

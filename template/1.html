@@ -3360,7 +3360,7 @@
                 finalizePendingAsAssistant(pendingRow, res, currentReasoningSteps.slice());
                 const modeText = res.rag_mode === 'graphrag' ? 'GraphRAG' : (res.rag_used ? 'RAG' : '');
                 setChatStatusLine(res.rag_used ? ('已完成 · 已使用 ' + modeText + ' 检索') : '已完成');
-                if (wantDebug && res.tool_debug) showToolDebug(res.tool_debug);
+                if (savedWantDebug && res.tool_debug) showToolDebug(res.tool_debug);
                 if (res.langsmith) showLangSmithTrace(res.langsmith);
             } else {
                 if (pendingRow) pendingRow.remove();

@@ -1,17 +1,16 @@
 """对话、上传、会话与 RAG 相关 API。"""
+from __future__ import annotations
+
 import asyncio
 import json
-from concurrent import futures
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
+from typing import Any
 
-from flask import Blueprint, Response, jsonify, request
+from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi.responses import StreamingResponse
 
-from core.async_runner import (
-    cancel_active_run,
-    iter_sync_from_async_gen,
-    run_async,
-    schedule_async,
-)
+from core.async_runner import cancel_active_run, register_run, run_cancellable, schedule_async, unregister_run
 
 import chat.chat_store as chat_store
 import rag.rag_service as rag_service
@@ -52,7 +51,13 @@ from upload.file_upload import (
 
 from llm.model_config import normalize_llm_config
 
-bp = Blueprint("chat", __name__)
+router = APIRouter(tags=["chat"])
+
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+}
 
 
 def _extract_llm_config(data: dict) -> dict:
@@ -107,11 +112,19 @@ def _chat_error_hint(exc: BaseException) -> str:
     return hint
 
 
-def _stream_agent_events(async_gen, *, on_result, run_key: str | None = None):
-    """SSE 生成器：转发 step 事件，在 _agent_result 时调用 on_result。"""
+async def _stream_agent_events(
+    async_gen: AsyncIterator[dict],
+    *,
+    on_result: Callable[[dict], list[dict]],
+    run_key: str | None = None,
+) -> AsyncIterator[str]:
+    """SSE 异步生成器：转发 step 事件，在 _agent_result 时调用 on_result。"""
     yield ": stream-open\n\n"
+    task = asyncio.current_task()
+    if run_key and task is not None:
+        register_run(run_key, task)
     try:
-        for event in iter_sync_from_async_gen(async_gen, run_key=run_key):
+        async for event in async_gen:
             if event.get("type") == "_agent_result":
                 try:
                     outs = on_result(event) or []
@@ -127,7 +140,7 @@ def _stream_agent_events(async_gen, *, on_result, run_key: str | None = None):
                     yield _sse_payload(out)
                 continue
             yield _sse_payload(event)
-    except (asyncio.CancelledError, futures.CancelledError):
+    except asyncio.CancelledError:
         yield _sse_payload(
             {
                 "type": "cancelled",
@@ -144,10 +157,13 @@ def _stream_agent_events(async_gen, *, on_result, run_key: str | None = None):
                 "msg": f"对话失败：{format_error(e)}{_chat_error_hint(e)}",
             }
         )
+    finally:
+        if run_key and task is not None:
+            unregister_run(run_key, task)
     yield _sse_payload({"type": "stream_end", "code": 0})
 
 
-def _prepare_chat_message_context(data: dict):
+def _prepare_chat_message_context(data: dict) -> dict[str, Any]:
     """解析 /chat/message 与 /chat/message/stream 共用参数。"""
     session_id = data.get("session_id") or "default"
     text = (data.get("message") or "").strip()
@@ -211,27 +227,28 @@ def _build_chat_success_payload(
     return out
 
 
-@bp.route("/chat/upload", methods=["POST"])
-def chat_upload():
-    session_id = (request.form.get("session_id") or "default").strip() or "default"
-    f = request.files.get("file")
-    if not f or not f.filename:
-        return jsonify({"code": -1, "msg": "请选择文件"})
-    raw_name = safe_filename(f.filename)
+@router.post("/chat/upload")
+async def chat_upload(
+    session_id: str = Form("default"),
+    rag_mode: str | None = Form(None),
+    file: UploadFile = File(...),
+):
+    session_id = (session_id or "default").strip() or "default"
+    if not file.filename:
+        return {"code": -1, "msg": "请选择文件"}
+    raw_name = safe_filename(file.filename)
     ext = Path(raw_name).suffix.lower()
     if ext not in ALLOWED_EXT:
-        return jsonify(
-            {
-                "code": -1,
-                "msg": f"不支持的类型 {ext}，允许：文档 {', '.join(sorted(DOC_EXT))} 或常见图片格式",
-            }
-        )
-    data = f.read()
+        return {
+            "code": -1,
+            "msg": f"不支持的类型 {ext}，允许：文档 {', '.join(sorted(DOC_EXT))} 或常见图片格式",
+        }
+    data = await file.read()
     if len(data) > MAX_UPLOAD_BYTES:
-        return jsonify({"code": -1, "msg": f"文件超过 {MAX_UPLOAD_BYTES // (1024 * 1024)}MB 限制"})
+        return {"code": -1, "msg": f"文件超过 {MAX_UPLOAD_BYTES // (1024 * 1024)}MB 限制"}
     kind = detect_kind(ext)
     if kind == "unknown":
-        return jsonify({"code": -1, "msg": "无法识别文件类型"})
+        return {"code": -1, "msg": "无法识别文件类型"}
 
     file_id = new_file_id()
     session_dir = UPLOADS_DIR / session_id
@@ -241,12 +258,12 @@ def chat_upload():
     dest.write_bytes(data)
 
     try:
-        parsed_text = run_async(parse_uploaded_file(dest, UPLOADS_DIR, kind))
+        parsed_text = await parse_uploaded_file(dest, UPLOADS_DIR, kind)
     except Exception as e:
         dest.unlink(missing_ok=True)
-        return jsonify({"code": -1, "msg": f"解析失败：{format_error(e)}"})
+        return {"code": -1, "msg": f"解析失败：{format_error(e)}"}
 
-    rag_mode = rag_service.normalize_rag_mode(request.form.get("rag_mode"))
+    mode = rag_service.normalize_rag_mode(rag_mode)
 
     meta = {
         "file_id": file_id,
@@ -256,10 +273,10 @@ def chat_upload():
         "relative_path": f"{session_id}/{stored_name}",
         "parsed_text": parsed_text,
         "parse_method": "glm-4v" if kind == "image" else "pdfplumber-markitdown",
-        "rag_mode": rag_mode,
+        "rag_mode": mode,
     }
-    rag_result = rag_service.index_document(
-        rag_mode, session_id, file_id, raw_name, parsed_text
+    rag_result = await asyncio.to_thread(
+        rag_service.index_document, mode, session_id, file_id, raw_name, parsed_text
     )
     if rag_result.get("database"):
         meta["milvus_database"] = rag_result["database"]
@@ -275,122 +292,117 @@ def chat_upload():
         meta["neo4j_database"] = rag_result["neo4j_database"]
     chat_store.save_upload_meta(session_id, file_id, meta)
     preview = parsed_text[:800] + ("…" if len(parsed_text) > 800 else "")
-    return jsonify(
-        {
-            "code": 0,
-            "msg": "上传并解析成功",
-            "file": {
-                "file_id": file_id,
-                "name": raw_name,
-                "kind": kind,
-                "preview": preview,
-                "parse_method": meta["parse_method"],
-            },
-            "graphrag": rag_result if rag_mode == "graphrag" else None,
-            "rag": rag_result,
-            "rag_mode": rag_mode,
-        }
-    )
+    return {
+        "code": 0,
+        "msg": "上传并解析成功",
+        "file": {
+            "file_id": file_id,
+            "name": raw_name,
+            "kind": kind,
+            "preview": preview,
+            "parse_method": meta["parse_method"],
+        },
+        "graphrag": rag_result if mode == "graphrag" else None,
+        "rag": rag_result,
+        "rag_mode": mode,
+    }
 
 
-@bp.route("/chat/history", methods=["POST"])
-def chat_history():
-    data = request.get_json() or {}
+@router.post("/chat/history")
+async def chat_history(request: Request):
+    data = await request.json() or {}
     session_id = data.get("session_id") or "default"
     try:
-        rows = chat_store.get_all_messages(session_id)
-        return jsonify({"code": 0, "session_id": session_id, "messages": rows})
+        rows = await asyncio.to_thread(chat_store.get_all_messages, session_id)
+        return {"code": 0, "session_id": session_id, "messages": rows}
     except Exception as e:
-        return jsonify({"code": -1, "msg": f"读取会话历史失败：{str(e)}"})
+        return {"code": -1, "msg": f"读取会话历史失败：{str(e)}"}
 
 
-@bp.route("/chat/clear", methods=["POST"])
-def chat_clear():
-    data = request.get_json() or {}
+@router.post("/chat/clear")
+async def chat_clear(request: Request):
+    data = await request.json() or {}
     session_id = data.get("session_id") or "default"
     try:
-        chat_store.clear_session(session_id)
-        rag_service.delete_session_indexes(session_id)
+        await asyncio.to_thread(chat_store.clear_session, session_id)
+        await asyncio.to_thread(rag_service.delete_session_indexes, session_id)
         clear_session_trace(session_id)
-        return jsonify({"code": 0, "msg": "会话记忆已清空"})
+        return {"code": 0, "msg": "会话记忆已清空"}
     except Exception as e:
-        return jsonify({"code": -1, "msg": str(e)})
+        return {"code": -1, "msg": str(e)}
 
 
-@bp.route("/chat/sessions", methods=["GET"])
-def chat_sessions_list():
+@router.get("/chat/sessions")
+async def chat_sessions_list(limit: int = 80):
     try:
-        limit = int(request.args.get("limit", 80))
+        limit = int(limit)
     except (TypeError, ValueError):
         limit = 80
     limit = max(1, min(limit, 200))
     try:
-        return jsonify({"code": 0, "sessions": chat_store.list_sessions(limit)})
+        sessions = await asyncio.to_thread(chat_store.list_sessions, limit)
+        return {"code": 0, "sessions": sessions}
     except Exception as e:
-        return jsonify({"code": -1, "msg": str(e)})
+        return {"code": -1, "msg": str(e)}
 
 
-@bp.route("/chat/session/rename", methods=["POST"])
-def chat_session_rename():
-    data = request.get_json() or {}
+@router.post("/chat/session/rename")
+async def chat_session_rename(request: Request):
+    data = await request.json() or {}
     session_id = data.get("session_id") or "default"
     title = (data.get("title") or "").strip()
     if not title:
-        return jsonify({"code": -1, "msg": "标题不能为空"})
+        return {"code": -1, "msg": "标题不能为空"}
     try:
-        chat_store.set_session_title(session_id, title)
-        return jsonify({"code": 0, "msg": "已重命名"})
+        await asyncio.to_thread(chat_store.set_session_title, session_id, title)
+        return {"code": 0, "msg": "已重命名"}
     except Exception as e:
-        return jsonify({"code": -1, "msg": str(e)})
+        return {"code": -1, "msg": str(e)}
 
 
-@bp.route("/chat/session/delete", methods=["POST"])
-def chat_session_delete():
-    data = request.get_json() or {}
+@router.post("/chat/session/delete")
+async def chat_session_delete(request: Request):
+    data = await request.json() or {}
     session_id = data.get("session_id") or "default"
     try:
-        chat_store.clear_session(session_id)
-        rag_service.delete_session_indexes(session_id)
+        await asyncio.to_thread(chat_store.clear_session, session_id)
+        await asyncio.to_thread(rag_service.delete_session_indexes, session_id)
         clear_session_trace(session_id)
-        return jsonify({"code": 0, "msg": "已删除会话"})
+        return {"code": 0, "msg": "已删除会话"}
     except Exception as e:
-        return jsonify({"code": -1, "msg": str(e)})
+        return {"code": -1, "msg": str(e)}
 
 
-@bp.route("/chat/rag/index", methods=["GET"])
-def chat_rag_index():
+@router.get("/chat/rag/index")
+async def chat_rag_index(session_id: str = "default", mode: str = "all"):
     """列出当前会话知识库索引；mode=rag|graphrag|all。"""
-    session_id = (request.args.get("session_id") or "default").strip() or "default"
-    mode = (request.args.get("mode") or "all").strip().lower()
+    session_id = (session_id or "default").strip() or "default"
+    mode = (mode or "all").strip().lower()
     try:
         if mode == "all":
-            indexes = rag_service.list_all_session_indexes(session_id)
-            return jsonify(
-                {
-                    "code": 0,
-                    "session_id": session_id,
-                    "indexes": indexes,
-                }
-            )
-        items = rag_service.list_session_index(session_id, mode)
-        return jsonify(
-            {
+            indexes = await asyncio.to_thread(rag_service.list_all_session_indexes, session_id)
+            return {
                 "code": 0,
                 "session_id": session_id,
-                "mode": rag_service.normalize_rag_mode(mode),
-                "documents": items,
+                "indexes": indexes,
             }
-        )
+        items = await asyncio.to_thread(rag_service.list_session_index, session_id, mode)
+        return {
+            "code": 0,
+            "session_id": session_id,
+            "mode": rag_service.normalize_rag_mode(mode),
+            "documents": items,
+        }
     except Exception as e:
-        return jsonify({"code": -1, "msg": str(e)})
+        return {"code": -1, "msg": str(e)}
 
 
-@bp.route("/chat/message", methods=["POST"])
-def chat_message():
-    data = request.get_json() or {}
+@router.post("/chat/message")
+async def chat_message(request: Request):
+    data = await request.json() or {}
     ctx = _prepare_chat_message_context(data)
     if not ctx["full_text"]:
-        return jsonify({"code": -1, "msg": "请输入消息或先上传附件"})
+        return {"code": -1, "msg": "请输入消息或先上传附件"}
     session_id = ctx["session_id"]
     file_ids = ctx["file_ids"]
     include_tool_debug = ctx["include_tool_debug"]
@@ -398,7 +410,8 @@ def chat_message():
     rag_context = ctx["rag_context"]
     try:
         user_uploads = upload_meta_for_message(file_ids, session_id) if file_ids else None
-        chat_store.save_message(
+        await asyncio.to_thread(
+            chat_store.save_message,
             session_id,
             "user",
             ctx["full_text"],
@@ -418,7 +431,9 @@ def chat_message():
                 hitl_enabled=ctx["hitl_enabled"],
             )
 
-        reply, msgs, hitl_pending = run_async(_invoke_chat(), run_key=session_id)
+        reply, msgs, hitl_pending = await run_cancellable(
+            _invoke_chat(), run_key=session_id
+        )
         langsmith_trace = finalize_trace_for_session(session_id)
         if hitl_pending:
             pending = hitl_pending[0] if hitl_pending else {}
@@ -439,39 +454,45 @@ def chat_message():
             }
             if langsmith_trace:
                 hitl_out["langsmith"] = langsmith_trace
-            return jsonify(hitl_out)
+            return hitl_out
         if not reply:
-            return jsonify({"code": -1, "msg": "模型未返回有效回复"})
-        chat_store.save_message(
+            return {"code": -1, "msg": "模型未返回有效回复"}
+        await asyncio.to_thread(
+            chat_store.save_message,
             session_id,
             "assistant",
             reply,
             mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
         )
         _maybe_schedule_auto_title(session_id)
-        return jsonify(
-            _build_chat_success_payload(
-                session_id,
-                reply,
-                msgs,
-                rag_context=rag_context,
-                rag_mode=rag_mode,
-                include_tool_debug=include_tool_debug,
-                agent_system_prompt=agent_system_prompt,
-                langsmith_trace=langsmith_trace,
-            )
+        return _build_chat_success_payload(
+            session_id,
+            reply,
+            msgs,
+            rag_context=rag_context,
+            rag_mode=rag_mode,
+            include_tool_debug=include_tool_debug,
+            agent_system_prompt=agent_system_prompt,
+            langsmith_trace=langsmith_trace,
         )
+    except asyncio.CancelledError:
+        return {
+            "code": 0,
+            "status": "cancelled",
+            "msg": "执行已由用户中断",
+            "session_id": session_id,
+        }
     except Exception as e:
-        return jsonify({"code": -1, "msg": f"对话失败：{format_error(e)}{_chat_error_hint(e)}"})
+        return {"code": -1, "msg": f"对话失败：{format_error(e)}{_chat_error_hint(e)}"}
 
 
-@bp.route("/chat/message/stream", methods=["POST"])
-def chat_message_stream():
+@router.post("/chat/message/stream")
+async def chat_message_stream(request: Request):
     """SSE：流式推送 Agent Thought → Action → Observation。"""
-    data = request.get_json() or {}
+    data = await request.json() or {}
     ctx = _prepare_chat_message_context(data)
     if not ctx["full_text"]:
-        return jsonify({"code": -1, "msg": "请输入消息或先上传附件"})
+        return {"code": -1, "msg": "请输入消息或先上传附件"}
     session_id = ctx["session_id"]
     file_ids = ctx["file_ids"]
     include_tool_debug = ctx["include_tool_debug"]
@@ -480,12 +501,14 @@ def chat_message_stream():
     agent_system_prompt = chat_agent_prompt_with_rag(rag_context)
 
     user_uploads = upload_meta_for_message(file_ids, session_id) if file_ids else None
-    chat_store.save_message(
+    await asyncio.to_thread(
+        chat_store.save_message,
         session_id,
         "user",
         ctx["full_text"],
         user_uploads=user_uploads,
     )
+
     async def _stream_with_summary():
         from agent.harness import (
             needs_task_harness,
@@ -509,8 +532,6 @@ def chat_message_stream():
                 user_goal, file_count=len(file_ids)
             )
             if is_continue:
-                import chat.chat_store as chat_store
-
                 persisted = chat_store.get_task_harness_meta(session_id)
                 if persisted.get("plan"):
                     preview["plan"] = list(persisted["plan"])
@@ -542,8 +563,6 @@ def chat_message_stream():
         ):
             yield event
 
-    async_gen = _stream_with_summary()
-
     def on_result(event: dict):
         if event.get("_error"):
             return [{"type": "error", "code": -1, "msg": event["_error"]}]
@@ -552,18 +571,22 @@ def chat_message_stream():
         hitl_pending = event.get("hitl")
         langsmith_trace = event.get("langsmith")
         if hitl_pending:
-            return [build_stream_hitl_payload(
-                session_id=session_id,
-                hitl_pending=hitl_pending,
-                rag_mode=rag_mode,
-                langsmith_trace=langsmith_trace,
-            )]
+            return [
+                build_stream_hitl_payload(
+                    session_id=session_id,
+                    hitl_pending=hitl_pending,
+                    rag_mode=rag_mode,
+                    langsmith_trace=langsmith_trace,
+                )
+            ]
         if not reply:
-            return [{
-                "type": "error",
-                "code": -1,
-                "msg": "Agent 在工具调用阶段中断且未完成，请刷新后重试；若涉及发邮件/微信请点击「确认执行」",
-            }]
+            return [
+                {
+                    "type": "error",
+                    "code": -1,
+                    "msg": "Agent 在工具调用阶段中断且未完成，请刷新后重试；若涉及发邮件/微信请点击「确认执行」",
+                }
+            ]
         chat_store.save_message(
             session_id,
             "assistant",
@@ -584,57 +607,49 @@ def chat_message_stream():
             )
         ]
 
-    headers = {
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",
-    }
-    return Response(
-        _stream_agent_events(async_gen, on_result=on_result, run_key=session_id),
-        mimetype="text/event-stream; charset=utf-8",
-        headers=headers,
+    return StreamingResponse(
+        _stream_agent_events(
+            _stream_with_summary(), on_result=on_result, run_key=session_id
+        ),
+        media_type="text/event-stream; charset=utf-8",
+        headers=_SSE_HEADERS,
     )
 
 
-@bp.route("/chat/cancel", methods=["POST"])
-def chat_cancel():
+@router.post("/chat/cancel")
+async def chat_cancel(request: Request):
     """用户主动打断：取消正在执行的 Agent，并清理 checkpoint。"""
-    data = request.get_json() or {}
+    data = await request.json() or {}
     session_id = (data.get("session_id") or "default").strip() or "default"
     cancelled = cancel_active_run(session_id)
-    # 勿 run_async(reset)：会与仍在 loop 上的 Agent 争抢，导致 /chat/cancel 本身卡死
     try:
         from agent.agent_checkpointer import reset_agent_thread
 
         schedule_async(reset_agent_thread(session_id))
     except Exception as e:
         if not cancelled:
-            return jsonify(
-                {
-                    "code": -1,
-                    "msg": f"停止失败：{format_error(e)}",
-                    "cancelled": False,
-                    "session_id": session_id,
-                }
-            )
-    return jsonify(
-        {
-            "code": 0,
-            "msg": "已停止执行",
-            "cancelled": cancelled,
-            "session_id": session_id,
-        }
-    )
+            return {
+                "code": -1,
+                "msg": f"停止失败：{format_error(e)}",
+                "cancelled": False,
+                "session_id": session_id,
+            }
+    return {
+        "code": 0,
+        "msg": "已停止执行",
+        "cancelled": cancelled,
+        "session_id": session_id,
+    }
 
 
-@bp.route("/chat/hitl/resume", methods=["POST"])
-def chat_hitl_resume():
+@router.post("/chat/hitl/resume")
+async def chat_hitl_resume(request: Request):
     """用户在前端确认/取消后，恢复 LangGraph checkpoint 继续 Agent。"""
-    data = request.get_json() or {}
+    data = await request.json() or {}
     session_id = data.get("session_id") or "default"
     action = (data.get("action") or "").strip().lower()
     if action not in ("approve", "reject"):
-        return jsonify({"code": -1, "msg": "action 须为 approve 或 reject"})
+        return {"code": -1, "msg": "action 须为 approve 或 reject"}
     include_tool_debug = bool(data.get("include_tool_debug"))
     rag_mode = rag_service.normalize_rag_mode(data.get("rag_mode"))
     rag_query = (data.get("rag_query") or "").strip() or "请继续完成上一轮任务"
@@ -649,7 +664,7 @@ def chat_hitl_resume():
     llm_config = _extract_llm_config(data)
     hitl_enabled = _extract_hitl_enabled(data)
     try:
-        reply, msgs, hitl_pending = run_async(
+        reply, msgs, hitl_pending = await run_cancellable(
             run_agent_hitl_resume(
                 session_id,
                 action,
@@ -679,40 +694,46 @@ def chat_hitl_resume():
             }
             if langsmith_trace:
                 hitl_out["langsmith"] = langsmith_trace
-            return jsonify(hitl_out)
+            return hitl_out
         if not reply:
-            return jsonify({"code": -1, "msg": "模型未返回有效回复"})
-        chat_store.save_message(
+            return {"code": -1, "msg": "模型未返回有效回复"}
+        await asyncio.to_thread(
+            chat_store.save_message,
             session_id,
             "assistant",
             reply,
             mcp_attachments=extract_mcp_attachments_from_messages(msgs) or None,
         )
         _maybe_schedule_auto_title(session_id)
-        return jsonify(
-            _build_chat_success_payload(
-                session_id,
-                reply,
-                msgs,
-                rag_context=rag_context,
-                rag_mode=rag_mode,
-                include_tool_debug=include_tool_debug,
-                agent_system_prompt=agent_system_prompt,
-                langsmith_trace=langsmith_trace,
-            )
+        return _build_chat_success_payload(
+            session_id,
+            reply,
+            msgs,
+            rag_context=rag_context,
+            rag_mode=rag_mode,
+            include_tool_debug=include_tool_debug,
+            agent_system_prompt=agent_system_prompt,
+            langsmith_trace=langsmith_trace,
         )
+    except asyncio.CancelledError:
+        return {
+            "code": 0,
+            "status": "cancelled",
+            "msg": "执行已由用户中断",
+            "session_id": session_id,
+        }
     except Exception as e:
-        return jsonify({"code": -1, "msg": f"HITL 恢复失败：{format_error(e)}"})
+        return {"code": -1, "msg": f"HITL 恢复失败：{format_error(e)}"}
 
 
-@bp.route("/chat/hitl/resume/stream", methods=["POST"])
-def chat_hitl_resume_stream():
+@router.post("/chat/hitl/resume/stream")
+async def chat_hitl_resume_stream(request: Request):
     """SSE：HITL 确认/取消后继续流式 Agent。"""
-    data = request.get_json() or {}
+    data = await request.json() or {}
     session_id = data.get("session_id") or "default"
     action = (data.get("action") or "").strip().lower()
     if action not in ("approve", "reject"):
-        return jsonify({"code": -1, "msg": "action 须为 approve 或 reject"})
+        return {"code": -1, "msg": "action 须为 approve 或 reject"}
     include_tool_debug = bool(data.get("include_tool_debug"))
     rag_mode = rag_service.normalize_rag_mode(data.get("rag_mode"))
     rag_query = (data.get("rag_query") or "").strip() or "请继续完成上一轮任务"
@@ -745,18 +766,22 @@ def chat_hitl_resume_stream():
         hitl_pending = event.get("hitl")
         langsmith_trace = event.get("langsmith")
         if hitl_pending:
-            return [build_stream_hitl_payload(
-                session_id=session_id,
-                hitl_pending=hitl_pending,
-                rag_mode=rag_mode,
-                langsmith_trace=langsmith_trace,
-            )]
+            return [
+                build_stream_hitl_payload(
+                    session_id=session_id,
+                    hitl_pending=hitl_pending,
+                    rag_mode=rag_mode,
+                    langsmith_trace=langsmith_trace,
+                )
+            ]
         if not reply:
-            return [{
-                "type": "error",
-                "code": -1,
-                "msg": "Agent 在工具调用阶段中断且未完成，请刷新后重试；若涉及发邮件/微信请点击「确认执行」",
-            }]
+            return [
+                {
+                    "type": "error",
+                    "code": -1,
+                    "msg": "Agent 在工具调用阶段中断且未完成，请刷新后重试；若涉及发邮件/微信请点击「确认执行」",
+                }
+            ]
         chat_store.save_message(
             session_id,
             "assistant",
@@ -777,28 +802,23 @@ def chat_hitl_resume_stream():
             )
         ]
 
-    headers = {
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Accel-Buffering": "no",
-    }
     try:
-        return Response(
+        return StreamingResponse(
             _stream_agent_events(async_gen, on_result=on_result, run_key=session_id),
-            mimetype="text/event-stream; charset=utf-8",
-            headers=headers,
+            media_type="text/event-stream; charset=utf-8",
+            headers=_SSE_HEADERS,
         )
     except Exception as e:
-        return jsonify({"code": -1, "msg": f"HITL 流式恢复失败：{format_error(e)}"})
+        return {"code": -1, "msg": f"HITL 流式恢复失败：{format_error(e)}"}
 
 
-@bp.route("/ai/run", methods=["POST"])
-def ai_run():
-    prompt = (request.get_json() or {}).get("prompt", "")
+@router.post("/ai/run")
+async def ai_run(request: Request):
+    prompt = (await request.json() or {}).get("prompt", "")
     if not prompt:
-        return jsonify({"code": -1, "msg": "请输入指令"})
+        return {"code": -1, "msg": "请输入指令"}
     try:
-        result = run_async(run_agent(prompt))
-        return jsonify({"code": 0, "msg": result})
+        result = await run_agent(prompt)
+        return {"code": 0, "msg": result}
     except Exception as e:
-        return jsonify({"code": -1, "msg": f"执行失败：{format_error(e)}"})
+        return {"code": -1, "msg": f"执行失败：{format_error(e)}"}

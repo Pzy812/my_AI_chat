@@ -1,18 +1,18 @@
-"""注册所有 Flask 蓝图。"""
-from flask import Flask
+"""注册所有 FastAPI 路由。"""
+from fastapi import FastAPI
 
 
-def register_routes(app: Flask) -> None:
-    from routes.pages import bp as pages_bp
-    from routes.service_routes import bp as service_bp
-    from routes.send_routes import bp as send_bp
-    from routes.chat_routes import bp as chat_bp
-    from routes.settings_routes import bp as settings_bp
-    from routes.observability_routes import bp as observability_bp
+def register_routes(app: FastAPI) -> None:
+    from routes.pages import router as pages_router
+    from routes.service_routes import router as service_router
+    from routes.send_routes import router as send_router
+    from routes.chat_routes import router as chat_router
+    from routes.settings_routes import router as settings_router
+    from routes.observability_routes import router as observability_router
 
-    app.register_blueprint(pages_bp)
-    app.register_blueprint(service_bp)
-    app.register_blueprint(send_bp)
-    app.register_blueprint(chat_bp)
-    app.register_blueprint(settings_bp)
-    app.register_blueprint(observability_bp)
+    app.include_router(pages_router)
+    app.include_router(service_router)
+    app.include_router(send_router)
+    app.include_router(chat_router)
+    app.include_router(settings_router)
+    app.include_router(observability_router)

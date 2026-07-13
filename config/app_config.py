@@ -35,8 +35,11 @@ MCP_HOST = os.getenv("MCP_HOST", "localhost")
 MCP_PORT = int(os.getenv("MCP_PORT", "8090"))
 MCP_URL = f"http://{MCP_HOST}:{MCP_PORT}/mcp"
 
-FLASK_HOST = os.getenv("FLASK_HOST", "0.0.0.0")
-FLASK_PORT = int(os.getenv("FLASK_PORT", "5001"))
+# APP_* 优先；兼容旧 FLASK_* 环境变量
+APP_HOST = os.getenv("APP_HOST") or os.getenv("FLASK_HOST", "0.0.0.0")
+APP_PORT = int(os.getenv("APP_PORT") or os.getenv("FLASK_PORT", "5001"))
+FLASK_HOST = APP_HOST  # 兼容旧引用
+FLASK_PORT = APP_PORT
 
 # PostgreSQL：聊天权威存储 + LangGraph Checkpointer（可共用同一库）
 POSTGRES_URI = (

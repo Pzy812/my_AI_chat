@@ -37,8 +37,7 @@ services:
       - app_net
 
   milvus:
-    image: milvusdb/milvus:v2.4.4
-    restart: unless-stopped
+    image: milvusdb/milvus:v2.5.0
     command: ["milvus", "run", "standalone"]
     security_opt:
       - seccomp:unconfined
@@ -77,6 +76,20 @@ services:
       timeout: 3s
       retries: 30
       start_period: 5s
+    networks:
+      - app_net
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: my_ai_chat
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - app_net
 
@@ -145,6 +158,8 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+      postgres:
+        condition: service_started
     volumes:
       - exports_data:/app/exports
       - uploads_data:/app/uploads
@@ -161,5 +176,6 @@ volumes:
   milvus_data:
   redis_data:
   neo4j_data:
+  postgres_data:
   exports_data:
   uploads_data:
