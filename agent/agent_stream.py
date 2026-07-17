@@ -234,6 +234,8 @@ def _harness_state_signature(payload: dict[str, Any]) -> str:
             "harness_enabled": payload.get("harness_enabled"),
             "completed_steps": payload.get("completed_steps"),
             "step_checklist": payload.get("step_checklist"),
+            "step_states": payload.get("step_states"),
+            "tool_events": payload.get("tool_events"),
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -278,6 +280,8 @@ async def _iter_react_agent_events(
                 "completed_steps",
                 "step_checklist",
                 "task_status",
+                "step_states",
+                "tool_events",
             )
             if k in input_data
         }

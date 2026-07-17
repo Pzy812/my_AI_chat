@@ -9,6 +9,8 @@ from langgraph.graph.message import add_messages
 from langgraph.managed import RemainingSteps
 from typing_extensions import TypedDict
 
+from agent.task_runtime import StepState, ToolExecutionEvent
+
 TaskPhase = Literal["gather", "process", "deliver"]
 TaskStatus = Literal["planning", "executing", "done"]
 
@@ -24,6 +26,7 @@ GATHER_TOOLS: frozenset[str] = frozenset(
         "read_local_file",
         "hello",
         "add",
+        "mark_step_complete",
     }
 )
 
@@ -53,18 +56,34 @@ PHASE_LABELS: dict[TaskPhase, str] = {
     "deliver": "外发交付（微信/邮件/导出）",
 }
 
-DELIVER_KEYWORDS = ("发微信", "发送", "邮件", "导出", "export", "发给", "发到")
-PROCESS_KEYWORDS = ("表格", "整理", "汇总", "格式化", "format", "排列")
-
-# 外发/导出工具不受 gather/process 阶段 gate 限制（仍走 HITL 确认与重复外发检测）
-PHASE_GATE_EXEMPT_TOOLS: frozenset[str] = frozenset(
-    {
-        "send_email",
-        "send_wechat_message",
-        "send_wechat_files",
-        "export_to_excel",
-    }
+DELIVER_KEYWORDS = (
+    "发微信",
+    "发送邮件",
+    "发邮件",
+    "发送至",
+    "发送到",
+    "发给",
+    "发到",
+    "导出",
+    "export",
 )
+PROCESS_KEYWORDS = (
+    "表格",
+    "整理",
+    "汇总",
+    "格式化",
+    "format",
+    "排列",
+    "邮件正文",
+    "撰写邮件",
+    "添加到邮件",
+    "合成",
+    "邮件内容",
+    "生成邮件",
+)
+
+# 纯外发任务会直接从 deliver 阶段启动；复杂任务不再绕过阶段 gate。
+PHASE_GATE_EXEMPT_TOOLS: frozenset[str] = frozenset()
 
 
 class TaskHarnessState(TypedDict):
@@ -78,6 +97,8 @@ class TaskHarnessState(TypedDict):
     completed_steps: NotRequired[list[str]]
     step_checklist: NotRequired[list[dict]]
     task_status: NotRequired[TaskStatus]
+    step_states: NotRequired[list[StepState]]
+    tool_events: NotRequired[list[ToolExecutionEvent]]
 
 
 def allowed_tools_for_phase(phase: TaskPhase, *, harness_enabled: bool) -> frozenset[str]:
@@ -105,4 +126,6 @@ def default_task_fields() -> dict:
         "completed_steps": [],
         "step_checklist": [],
         "task_status": "executing",
+        "step_states": [],
+        "tool_events": [],
     }

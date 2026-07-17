@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 
 from agent.planner import needs_task_harness
 from agent.task_continue import (
+    deliver_goal_satisfied,
     deliver_tools_used,
     should_continue_deliver,
     user_goal_requires_deliver,
@@ -84,14 +85,14 @@ def resolve_user_goal(messages: list[BaseMessage]) -> tuple[str, bool]:
 def build_step_checklist(plan: list[str], plan_index: int) -> list[dict]:
     """构造可持久化的子任务 checklist（供前端 ✓/✗ 展示）。"""
     out: list[dict] = []
-    idx = max(0, min(int(plan_index or 0), max(len(plan) - 1, 0)))
+    idx = max(0, min(int(plan_index or 0), len(plan)))
     for i, step in enumerate(plan):
         out.append(
             {
                 "index": i,
                 "step": step,
                 "done": i < idx,
-                "current": i == idx,
+                "current": i == idx and idx < len(plan),
             }
         )
     return out
@@ -118,12 +119,14 @@ def task_plan_incomplete(state: dict, messages: list) -> bool:
     if not plan:
         return False
     plan_index = int(state.get("plan_index") or 0)
-    if plan_index < len(plan) - 1:
-        return True
     goal = (state.get("user_goal") or "").strip()
-    if user_goal_requires_deliver(goal) and not deliver_tools_used(messages):
-        return True
-    return False
+    if user_goal_requires_deliver(goal):
+        delivered = deliver_goal_satisfied(goal, messages)
+        if delivered:
+            return False
+        if not delivered:
+            return True
+    return plan_index < len(plan)
 
 
 def format_checklist_text(plan: list[str], plan_index: int) -> str:
@@ -204,4 +207,6 @@ def task_harness_meta_from_state(state: dict) -> dict:
         "completed_steps": list(state.get("completed_steps") or []),
         "step_checklist": list(state.get("step_checklist") or build_step_checklist(plan, plan_index)),
         "task_status": state.get("task_status") or "executing",
+        "step_states": list(state.get("step_states") or []),
+        "tool_events": list(state.get("tool_events") or []),
     }

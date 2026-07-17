@@ -4,3 +4,6 @@ __pycache__/
 *.log 
 uploads/ 
 exports/ 
+evals/results/*.jsonl
+evals/results/comparison.md
+!evals/results/.gitkeep

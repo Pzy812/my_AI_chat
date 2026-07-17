@@ -8,6 +8,7 @@ Task Harness 是本项目的**复杂任务编排层**，在 LangGraph ReAct Agen
 |------|------|
 | `agent/planner.py` | 启发式检测 + LLM 生成步骤计划 |
 | `agent/task_state.py` | 阶段定义、允许工具集合、状态 Schema |
+| `agent/task_runtime.py` | StepState、ToolExecutionEvent、progress evaluator |
 | `agent/harness.py` | pre/post hooks、phase gate、重锚定、持久化 |
 | `agent/task_checklist.py` | checklist、续跑 nudge、「继续」识别 |
 | `agent/task_continue.py` | 外发交付检测、重复发送拦截 |
@@ -42,8 +43,9 @@ flowchart TD
     F --> G[pre_model_hook]
     G --> H[LLM 推理]
     H --> I[工具调用 phase gate + HITL]
-    I --> J[post_model_hook 更新进度]
-    J --> K{任务完成?}
+    I --> J[记录 ToolExecutionEvent]
+    J --> N[progress evaluator 更新 StepState]
+    N --> K{任务完成?}
     K -->|否| L[should_continue_task<br/>注入 HumanMessage nudge]
     L --> F
     K -->|是| M[回复用户]
@@ -87,7 +89,8 @@ flowchart TD
 
 当前阶段由 **当前 plan 步骤文本** 推断（`infer_phase_from_step`），关键词如「发邮件」「导出」→ deliver，「表格」「汇总」→ process。
 
-`plan_index` 由已完成工具轮数推算（`compute_plan_index` = `count_tool_rounds`，上限为 `len(plan)-1`）。
+`plan_index` 由事件驱动 progress evaluator 计算，指向首个未完成的 `StepState`；所有步骤
+完成后等于 `len(plan)`。工具调用轮数只保留用于控制重锚定频率，不再决定任务进度。
 
 ### 3.1 Phase Gate
 
@@ -99,6 +102,18 @@ flowchart TD
 - 同一工具连续被拒绝 `AGENT_PHASE_GATE_MAX_RETRIES`（默认 3）次 → **放弃该工具**，提示 Agent 用 Markdown 直接回复
 
 Gate 读取 `_run_task_context[thread_id]`，由 `pre_model_hook` 每轮同步。
+
+### 3.1.1 交付前置检查与任务级证据复用
+
+Agent 有时会用一次批量搜索覆盖多个收集步骤，并直接在 `send_email` 参数中生成完整正文。
+交付工具在非 deliver 阶段被请求时，Harness 会先执行 delivery preflight：
+
+1. 将已成功的搜索/读取事件作为任务级证据，复用给要求相同工具的未完成步骤；
+2. 若邮件正文或 Excel rows 已包含实质交付内容，自动完成中间的纯分析/整理步骤；
+3. 只有仍缺少具体工具证据（例如明确要求 `format_pretty_table` 却从未成功调用）时才等待；
+4. 阶段等待记录为 `executed=false`，不会把业务步骤标为失败，也不会累计到永久禁用。
+
+因此，“一次调用完成多个收集工作”可以安全快进，但无法用一段空邮件绕过真正缺失的工具步骤。
 
 ### 3.2 与 HITL 的关系
 
@@ -123,9 +138,9 @@ HITL resume 时会注入重锚定 SystemMessage（`format_reanchor_summary`）�
 
 ### 4.1 pre_model_hook 职责
 
-1. 根据 messages 更新 `plan_index`、`task_phase`、`step_checklist`
+1. 将尚未处理的 `ToolExecutionEvent` 折叠进 `StepState`，更新进度与失败信息
 2. 同步 `_run_task_context`、abandoned tools、deliver 完成标记
-3. 若目标含外发但尚未 deliver → 强制推进到 deliver 阶段
+3. 根据首个未完成步骤计算阶段，不再靠工具调用数量强制跳阶段
 4. **`trim_messages_for_llm`**：保留首条 HumanMessage + 最近 N 条（`AGENT_LLM_CONTEXT_MESSAGES`，默认 10）
 5. 构造 **`llm_input_messages`**：首条 SystemMessage 重锚定 + trim 后的 messages
 6. 每 `AGENT_REANCHOR_EVERY_N_TOOLS` 轮工具后插入进度检查 SystemMessage
@@ -134,7 +149,8 @@ HITL resume 时会注入重锚定 SystemMessage（`format_reanchor_summary`）�
 
 ### 4.2 post_model_hook 职责
 
-工具执行后再次更新 `plan_index`、checklist、`task_status`（全部步骤完成 → `done`）。
+同步最新事件状态，并在全部步骤成功或跳过后把 `task_status` 设为 `done`。实际工具结果
+通常在下一次 `pre_model_hook` 中完成折叠；`post_model_hook` 保证状态和运行时上下文一致。
 
 ---
 
@@ -172,7 +188,7 @@ Agent 给出文本回复但未完成任务时，`should_continue_task()`（`task
 
 1. `resolve_user_goal` 回溯到首条复杂任务指令
 2. `build_initial_agent_state` 从 Redis 读取 `task_harness_meta`
-3. 恢复 `plan`、`plan_index`、`task_phase`、checklist
+3. 恢复 `plan`、`step_states`、`tool_events`、`plan_index`、`task_phase`、checklist
 4. 若 Redis 无 meta 且仍需 Harness → 重新 `build_task_plan`
 
 这使多轮对话中任务可跨 **用户新消息** 延续，而不依赖 LangGraph checkpoint 中的完整 message 历史。
@@ -186,8 +202,28 @@ Agent 给出文本回复但未完成任务时，`should_continue_task()`（`task
 ```python
 # agent/task_state.py
 user_goal, plan, plan_index, task_phase,
-harness_enabled, completed_steps, step_checklist, task_status
+harness_enabled, completed_steps, step_checklist, task_status,
+step_states, tool_events
 ```
+
+`plan_index` 现在是 `step_states` 中首个未完成步骤的位置；全部完成时等于
+`len(plan)`，不再由 ToolMessage 轮数推断。
+
+每个步骤持久化 `status / attempts / evidence / error / expected_tools`。工具包装器在
+执行结束后记录 `ToolExecutionEvent`，pre/post hook 使用独立 progress evaluator 折叠事件：
+
+- 成功工具事件满足当前步骤的证据要求后推进；
+- 失败事件将步骤标为 `failed`，保留错误并允许后续重试恢复；
+- 一个组合步骤要求所有 `expected_tools` 均有成功证据；
+- 纯分析/总结步骤调用内部 `mark_step_complete` 提交明确完成事件。
+
+计划器会将同阶段动作合并为 3～5 步，并移除“确认邮件发送成功”这类重复步骤。
+真实外发工具一旦返回成功，该事件就是权威终态：旧计划里已被交付结果覆盖的残留
+步骤会被标记为 `skipped`，任务直接结束，不再自动续跑或再次发送。
+
+外发工具还使用按“用户轮次 + 工具名”管理的原子占用状态。即使模型在一次响应中
+并行生成多个相同的 `send_email` 调用，也只有一个能够真正执行；其余调用记录为
+`executed=false` 的策略拦截事件，不增加业务步骤的失败次数。
 
 ### 7.2 持久化位置
 
@@ -197,6 +233,7 @@ harness_enabled, completed_steps, step_checklist, task_status
 | Task harness meta | **Redis only** | `chat_store.save_task_harness_meta` |
 | LangGraph checkpoint | Postgres / MemorySaver | HITL interrupt 恢复 |
 | `_run_task_context` | **进程内存** | phase gate 运行时读取 |
+| Tool events | LangGraph state + Redis meta | 标准化工具结果与步骤证据 |
 | `_phase_gate_attempts` / `_abandoned_tools` | **进程内存** | gate 计数 |
 | `_deliver_done` | **进程内存** | 防重复外发 |
 
@@ -225,9 +262,11 @@ SSE 事件 `task_harness`（`task_harness_event_payload`）推送：
   "plan_index": 1,
   "task_phase": "process",
   "step_checklist": [
-    {"index": 0, "step": "...", "done": true, "current": false},
-    {"index": 1, "step": "...", "done": false, "current": true}
-  ]
+    {"index": 0, "step": "...", "status": "succeeded", "done": true, "current": false},
+    {"index": 1, "step": "...", "status": "running", "done": false, "current": true}
+  ],
+  "step_states": [],
+  "tool_events": []
 }
 ```
 
@@ -253,9 +292,9 @@ SSE 事件 `task_harness`（`task_harness_event_payload`）推送：
 
 1. **Harness meta 仅存 Redis**：Redis 清空后跨轮「继续」丢失计划；可迁移至 Postgres。
 2. **Phase gate 状态在内存**：进程重启 mid-run 后 gate 计数丢失。
-3. **plan_index 按工具轮数估算**：若一步需多次工具调用，进度可能提前推进；依赖重锚定文案纠正。
+3. **证据要求仍由步骤文本推断**：计划措辞过于抽象时，需要 Agent 调用 `mark_step_complete`。
 4. **阶段由步骤文本关键词推断**：计划措辞不当可能导致阶段误判。
-5. **无自动化 eval**：复杂任务完成率尚未量化回归。
+5. **Eval 需要真实 LLM Key**：工具无副作用，但模型调用仍会产生 API 成本；见 `evals/README.md`。
 
 ---
 
@@ -264,7 +303,7 @@ SSE 事件 `task_harness`（`task_harness_event_payload`）推送：
 1. 终端开启 `LOG_LLM_PROMPT=1` 查看重锚定 SystemMessage 是否注入
 2. 观察 SSE `task_harness` 事件中 `plan_index` / `task_phase` 变化
 3. ToolMessage 以 `⛔` 开头表示 phase gate 拒绝
-4. 关闭 Harness 对比：`AGENT_TASK_HARNESS=0`
+4. 运行 `python -m evals.runner --limit 12` 对比 baseline 与 Harness
 5. 调低 `AGENT_TASK_HARNESS_MIN_SIGNALS` 可让更多任务进入 Harness（调试时用）
 
 ---

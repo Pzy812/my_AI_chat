@@ -1,6 +1,8 @@
-# 前端 AI 发消息
+# Agent Runtime Lab
 
-基于 **LangGraph + MCP** 的本地 AI Agent 助手：支持多轮对话、文档 RAG/GraphRAG、联网搜索，以及通过微信/邮件/Excel 等工具完成多步任务。内置 **Task Harness**（任务规划 + 分阶段工具控制 + 自动续跑）与 **HITL**（敏感操作人机确认）。
+> 事件驱动 AI Agent Runtime · Task Harness · MCP / RAG · Reliability Eval
+
+一个面向可靠执行与工程评测的本地 AI Agent 平台。基于 **LangGraph + FastAPI + MCP**，支持多轮对话、文档 RAG/GraphRAG、联网搜索，以及通过邮件、Excel 等工具完成多步任务。核心 **Task Harness** 使用显式步骤状态、标准化工具事件和完成证据驱动进度，并提供 Baseline vs Harness 可靠性评测；敏感操作由 **HITL** 确认保护。
 
 > 详细架构见 [docs/STRUCTURE.md](docs/STRUCTURE.md) · Task Harness 设计见 [docs/TASK_HARNESS.md](docs/TASK_HARNESS.md)
 
@@ -11,7 +13,8 @@
 | 能力 | 说明 |
 |------|------|
 | **Agent 对话** | LangGraph ReAct，SSE 流式展示 Thought / Action / Observation |
-| **Task Harness** | 复杂任务自动拆步、gather/process/deliver 三阶段工具 gate、未完成自动续跑 |
+| **Task Harness** | 事件驱动步骤状态机、完成证据、gather/process/deliver 阶段 gate、自动续跑与收敛 |
+| **Agent Eval** | 30 条确定性任务集，对比 Baseline/Harness 完成率、工具调用、延迟与失败类型 |
 | **HITL** | 发微信、发邮件、导出 Excel 等操作需前端确认后执行 |
 | **MCP 工具** | 微信、邮件、本地文件、联网搜索、表格格式化、Excel 导出 |
 | **RAG** | Milvus 混合检索（向量 + BM25 + Rerank） |
@@ -32,7 +35,7 @@
 
 ```powershell
 # 1. 克隆并进入项目
-cd 前端AI发消息
+cd my_AI_chat
 
 # 2. 安装依赖
 pip install -r requirements.txt
@@ -108,7 +111,7 @@ ZHIPUAI_API_KEY=你的密钥
 
 **预期行为：**
 
-1. 检测到复杂任务 → 生成 3–7 步执行计划，前端展示 checklist
+1. 检测到复杂任务 → 生成并压缩为 3～5 步执行计划，前端展示 checklist
 2. **gather** 阶段：调用 `web_search` / `web_search_batch`
 3. **process** 阶段：调用 `format_pretty_table`（HITL 确认）
 4. **deliver** 阶段：调用 `send_email`（HITL 确认）
@@ -133,7 +136,7 @@ ZHIPUAI_API_KEY=你的密钥
 浏览器 (template/1.html)
     │  HTTP / SSE
     ▼
-Flask (app.py → routes/*)
+FastAPI (app.py → routes/*)
     │  asyncio
     ▼
 LangGraph ReAct Agent (agent/*)
@@ -158,7 +161,8 @@ mcp_server.py ──→ 微信 / 邮件 / 搜索 / 文件 / Excel
 ├── chat/               # 会话存储与摘要
 ├── rag/                # RAG / GraphRAG
 ├── app_mcp/            # MCP 生命周期与工具实现
-├── routes/             # Flask API
+├── routes/             # FastAPI 路由
+├── evals/              # Baseline vs Harness 任务集、评分器与报告
 ├── template/1.html     # 前端单页
 ├── docs/               # 架构与设计文档
 └── scripts/start.bat   # Windows 一键启动
@@ -193,6 +197,18 @@ python scripts/testwx.py
 pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
+
+Agent 可靠性评测（使用 Fake Tools，不会真实联网、发邮件或调用微信）：
+
+```powershell
+# 快速验证 12 个任务
+python -m evals.runner --limit 12 --repeats 1
+
+# 30 个任务各运行 3 次，输出 baseline vs Harness 报告
+python -m evals.runner --repeats 3
+```
+
+数据集、评分规则与报告说明见 [evals/README.md](evals/README.md)。
 
 GitHub Actions 在 push / PR 时自动运行上述测试（见 [`.github/workflows/python-app.yml`](.github/workflows/python-app.yml)）。
 

@@ -79,3 +79,20 @@ def test_should_not_continue_when_deliver_done():
     ]
     nudge = should_continue_task(state, messages, "邮件已发送")
     assert nudge is None
+
+
+def test_should_not_continue_stale_plan_after_early_delivery():
+    state = {
+        "harness_enabled": True,
+        "user_goal": "搜索天气、整理资料并发邮件到 x@y.com",
+        "plan": ["搜索天气", "搜索资料", "整理内容", "撰写邮件", "发邮件", "确认发送"],
+        "plan_index": 2,
+        "task_phase": "process",
+    }
+    messages = [
+        HumanMessage(content=state["user_goal"]),
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "send_email", "args": {}}]),
+        ToolMessage(content="✅ 邮件已发送到 x@y.com", tool_call_id="1", name="send_email"),
+        AIMessage(content="邮件已经发送完成。"),
+    ]
+    assert should_continue_task(state, messages, "邮件已经发送完成。") is None

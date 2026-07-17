@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from typing import Any
 
 from langchain_core.messages import (
@@ -15,7 +16,12 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.types import Command
 
-from agent.planner import build_task_plan, needs_task_harness, format_plan_for_display
+from agent.planner import (
+    build_task_plan,
+    ensure_plan_has_delivery,
+    format_plan_for_display,
+    needs_task_harness,
+)
 from agent.task_checklist import (
     build_step_checklist,
     extract_user_goal,
@@ -28,6 +34,18 @@ from agent.task_state import (
     allowed_tools_for_phase,
     default_task_fields,
     infer_phase_from_step,
+)
+from agent.task_runtime import (
+    CONTROL_COMPLETE_TOOL,
+    build_step_states,
+    canonical_tool_name,
+    clear_runtime_events,
+    evaluate_progress,
+    is_delivery_verification_step,
+    make_tool_event,
+    record_runtime_event,
+    runtime_events,
+    tool_output_succeeded,
 )
 from config.app_config import (
     AGENT_LLM_CONTEXT_MESSAGES,
@@ -49,9 +67,10 @@ PHASE_GATE_ABANDON_MARKER = "已放弃"
 TASK_DISCIPLINE_PROMPT = (
     "\n\n【复杂任务执行纪律】\n"
     "1. 严格按「执行计划」推进，每次工具调用前说明当前在做哪一步。\n"
-    "2. 信息收集阶段优先 search/read；用户要求发邮件/微信/导出 Excel 时，可直接调用 "
-    "send_email、send_wechat_*、export_to_excel（执行前会弹出用户确认，不受阶段限制）。\n"
-    "3. 工具返回后先更新进度，再决定下一步；若发现偏离用户原始目标，停止并说明。\n"
+    "2. 信息收集阶段优先 search/read；只有状态机推进到交付阶段后，才调用 "
+    "send_email、send_wechat_*、export_to_excel（执行前仍需用户确认）。\n"
+    "3. 工具型步骤由系统根据成功事件自动更新；纯分析、总结等无工具步骤完成后，"
+    "必须调用 mark_step_complete(evidence=...) 显式提交完成证据。\n"
     "4. 未完成全部必要步骤前，不要给出最终结论。\n"
     "5. Gather 阶段若有多个独立搜索主题，优先使用 web_search_batch(queries=[...]) 并行检索。"
 )
@@ -84,14 +103,23 @@ def _thread_id_from_config(config: RunnableConfig | None) -> str:
 
 
 def _sync_run_context(thread_id: str, state: dict[str, Any]) -> None:
+    previous = _run_task_context.get(thread_id, {})
+    step_states = list(state.get("step_states") or [])
+    plan_index = int(state.get("plan_index") or 0)
+    current_step_id = ""
+    if step_states and 0 <= plan_index < len(step_states):
+        current_step_id = str(step_states[plan_index].get("id") or "")
     _run_task_context[thread_id] = {
         "harness_enabled": bool(state.get("harness_enabled")),
         "task_phase": state.get("task_phase") or "gather",
         "user_goal": state.get("user_goal") or "",
         "plan": list(state.get("plan") or []),
-        "plan_index": int(state.get("plan_index") or 0),
-        "deliver_done_tools": set(_run_task_context.get(thread_id, {}).get("deliver_done_tools") or set()),
-        "user_turn_serial": int(_run_task_context.get(thread_id, {}).get("user_turn_serial") or 0),
+        "plan_index": plan_index,
+        "current_step_id": current_step_id,
+        "step_states": step_states,
+        "tool_events": list(state.get("tool_events") or []),
+        "deliver_done_tools": set(previous.get("deliver_done_tools") or set()),
+        "user_turn_serial": int(previous.get("user_turn_serial") or 0),
     }
 
 
@@ -144,6 +172,7 @@ def _state_get(state: Any, key: str, default=None):
 
 
 def compute_plan_index(plan: list[str], messages: list[BaseMessage]) -> int:
+    """Legacy compatibility helper; runtime progress no longer calls this."""
     if not plan:
         return 0
     rounds = count_tool_rounds(messages)
@@ -172,6 +201,7 @@ def build_reanchor_text(state: dict[str, Any]) -> str:
     phase = _state_get(state, "task_phase") or "gather"
     completed = list(_state_get(state, "completed_steps") or [])
     checklist = list(_state_get(state, "step_checklist") or [])
+    step_states = list(_state_get(state, "step_states") or [])
     allowed = allowed_tools_for_phase(
         phase, harness_enabled=bool(_state_get(state, "harness_enabled"))
     )
@@ -196,10 +226,16 @@ def build_reanchor_text(state: dict[str, Any]) -> str:
     if _state_get(state, "harness_enabled"):
         shown = sorted(set(allowed) | set(PHASE_GATE_EXEMPT_TOOLS))
         lines.append("本阶段允许工具：" + ", ".join(shown))
-        lines.append(
-            "外发类工具（send_email / send_wechat_* / export_to_excel）随时可调用，"
-            "不受 gather/process 阶段限制。"
-        )
+        lines.append("外发类工具仅在交付阶段开放，并仍受 HITL 确认保护。")
+        if step_states and plan_index < len(step_states):
+            expected = step_states[plan_index].get("expected_tools") or []
+            if expected:
+                lines.append("当前步骤完成证据：" + ", ".join(expected) + " 成功事件。")
+            else:
+                lines.append(
+                    "当前步骤没有必需工具；完成分析/总结后调用 "
+                    "mark_step_complete(evidence=完成依据) 推进状态。"
+                )
     lines.append("请先确认当前步骤，再决定是否调用工具；不要偏离原始目标。")
     return "\n".join(lines)
 
@@ -247,12 +283,27 @@ async def build_initial_agent_state(
         if persisted.get("user_goal"):
             fields["user_goal"] = persisted["user_goal"]
         if persisted.get("plan"):
-            fields["plan"] = list(persisted["plan"])
+            persisted_plan = list(persisted["plan"])
+            fields["plan"] = ensure_plan_has_delivery(
+                persisted_plan, fields["user_goal"], max_steps=None
+            )
             fields["plan_index"] = int(persisted.get("plan_index") or 0)
-            fields["task_phase"] = persisted.get("task_phase") or "gather"
+            fields["task_phase"] = compute_task_phase(
+                fields["plan"], fields["plan_index"], harness_enabled=True
+            )
             fields["completed_steps"] = list(persisted.get("completed_steps") or [])
             fields["step_checklist"] = list(persisted.get("step_checklist") or [])
             fields["task_status"] = persisted.get("task_status") or "executing"
+            fields["step_states"] = list(persisted.get("step_states") or [])
+            if len(fields["plan"]) > len(persisted_plan):
+                appended = build_step_states(fields["plan"])[len(persisted_plan) :]
+                if fields["plan_index"] >= len(persisted_plan) and appended:
+                    appended[0]["status"] = "running"
+                fields["step_states"].extend(appended)
+                fields["step_checklist"] = build_step_checklist(
+                    fields["plan"], fields["plan_index"]
+                )
+            fields["tool_events"] = list(persisted.get("tool_events") or [])
             fields["harness_enabled"] = bool(persisted.get("harness_enabled", True))
             harness = fields["harness_enabled"]
         elif harness and user_goal:
@@ -262,6 +313,7 @@ async def build_initial_agent_state(
             fields["plan_index"] = 0
             fields["task_phase"] = compute_task_phase(plan, 0, harness_enabled=True)
             fields["step_checklist"] = build_step_checklist(plan, 0)
+            fields["step_states"] = build_step_states(plan)
             fields["task_status"] = "executing"
     elif harness and user_goal:
         fields["task_status"] = "planning"
@@ -270,6 +322,7 @@ async def build_initial_agent_state(
         fields["plan_index"] = 0
         fields["task_phase"] = compute_task_phase(plan, 0, harness_enabled=True)
         fields["step_checklist"] = build_step_checklist(plan, 0)
+        fields["step_states"] = build_step_states(plan)
         fields["task_status"] = "executing"
     else:
         fields["task_phase"] = "deliver"
@@ -284,6 +337,88 @@ async def build_initial_agent_state(
     return state
 
 
+def reconcile_task_runtime(state: dict[str, Any], thread_id: str) -> dict[str, Any]:
+    """Fold recorded tool events into persistent task state."""
+    plan = list(_state_get(state, "plan") or [])
+    harness_enabled = bool(_state_get(state, "harness_enabled"))
+    if not harness_enabled or not plan:
+        return {
+            "plan_index": 0,
+            "task_phase": "deliver",
+        }
+    progress = evaluate_progress(
+        plan,
+        _state_get(state, "step_states") or [],
+        _state_get(state, "tool_events") or [],
+        runtime_events(thread_id),
+    )
+    progress["task_phase"] = compute_task_phase(
+        plan,
+        int(progress["plan_index"]),
+        harness_enabled=True,
+    )
+    return progress
+
+
+def finalize_task_after_delivery(
+    state: dict[str, Any], messages: list[BaseMessage]
+) -> dict[str, Any]:
+    """Treat a successful requested side effect as the authoritative task terminal.
+
+    This also repairs old/stale 7-step checkpoints: unfinished preparation steps
+    are skipped because the delivered payload proves they can no longer require a
+    second side effect, while delivery/verification steps are marked succeeded.
+    """
+    from agent.task_continue import deliver_goal_satisfied, required_deliver_tools
+
+    goal = str(state.get("user_goal") or "").strip()
+    plan = list(state.get("plan") or [])
+    if not plan or not deliver_goal_satisfied(goal, messages):
+        return {}
+
+    required = required_deliver_tools(goal)
+    steps = build_step_states(plan)
+    raw_steps = list(state.get("step_states") or [])
+    if len(raw_steps) == len(plan):
+        steps = [dict(step) for step in raw_steps]
+
+    for step in steps:
+        if step.get("status") in ("succeeded", "skipped"):
+            continue
+        expected = {
+            canonical_tool_name(str(name))
+            for name in (step.get("expected_tools") or [])
+        }
+        description = str(step.get("description") or "")
+        is_delivery = bool(expected & required) or infer_phase_from_step(description) == "deliver"
+        if is_delivery or is_delivery_verification_step(description):
+            step["status"] = "succeeded"
+        else:
+            step["status"] = "skipped"
+        step["error"] = None
+
+    checklist = [
+        {
+            "index": i,
+            "step": description,
+            "status": steps[i].get("status", "succeeded"),
+            "done": True,
+            "current": False,
+            "attempts": int(steps[i].get("attempts") or 0),
+            "error": None,
+        }
+        for i, description in enumerate(plan)
+    ]
+    return {
+        "plan_index": len(plan),
+        "task_phase": "deliver",
+        "task_status": "done",
+        "step_states": steps,
+        "step_checklist": checklist,
+        "completed_steps": list(plan),
+    }
+
+
 def format_reanchor_summary(state: dict[str, Any]) -> str:
     text = build_reanchor_text(state)
     return text.replace("【任务续跑上下文 — 每步推理前必读】", "【HITL 确认后继续 — 任务重锚定】", 1)
@@ -292,50 +427,20 @@ def format_reanchor_summary(state: dict[str, Any]) -> str:
 def make_pre_model_hook():
     async def pre_model_hook(state: dict[str, Any], config: RunnableConfig) -> dict[str, Any]:
         messages = list(_state_get(state, "messages") or [])
-        harness_enabled = bool(_state_get(state, "harness_enabled"))
-        plan = list(_state_get(state, "plan") or [])
-        plan_index = compute_plan_index(plan, messages)
-        task_phase = compute_task_phase(
-            plan, plan_index, harness_enabled=harness_enabled
-        )
-        from agent.task_continue import (
-            deliver_tools_used,
-            goal_requires_gather,
-            user_goal_requires_deliver,
-        )
+        from agent.task_continue import deliver_tools_used
 
         thread_id = _thread_id_from_config(config)
         sync_abandoned_tools_from_messages(thread_id, messages)
         sync_run_context_deliver_state(thread_id, messages)
-
-        goal = (_state_get(state, "user_goal") or "").strip()
-        if (
-            harness_enabled
-            and user_goal_requires_deliver(goal)
-            and not deliver_tools_used(messages)
-        ):
-            if not goal_requires_gather(goal):
-                task_phase = "deliver"
-            elif plan and plan_index >= len(plan) - 1:
-                task_phase = "deliver"
-            elif plan and infer_phase_from_step(plan[-1]) == "deliver" and plan_index >= len(plan) - 2:
-                task_phase = "deliver"
-            elif not plan and count_tool_rounds(messages) >= 1:
-                task_phase = "deliver"
         tool_rounds = count_tool_rounds(messages)
-
-        updated: dict[str, Any] = {
-            "plan_index": plan_index,
-            "task_phase": task_phase,
-        }
-        if plan:
-            updated["completed_steps"] = plan[:plan_index]
-            updated["step_checklist"] = build_step_checklist(plan, plan_index)
-        if plan and plan_index >= len(plan):
-            updated["task_status"] = "done"
+        updated = reconcile_task_runtime(state, thread_id)
 
         base = dict(state) if isinstance(state, dict) else {}
         merged = {**base, **updated}
+        terminal = finalize_task_after_delivery(merged, messages)
+        if terminal:
+            updated.update(terminal)
+            merged.update(terminal)
         _sync_run_context(thread_id, merged)
 
         trimmed = trim_messages_for_llm(messages)
@@ -372,25 +477,16 @@ def make_pre_model_hook():
 
 def make_post_model_hook():
     async def post_model_hook(state: dict[str, Any], config: RunnableConfig) -> dict[str, Any]:
-        messages = list(_state_get(state, "messages") or [])
-        plan = list(_state_get(state, "plan") or [])
-        plan_index = compute_plan_index(plan, messages)
-        harness_enabled = bool(_state_get(state, "harness_enabled"))
-        task_phase = compute_task_phase(
-            plan, plan_index, harness_enabled=harness_enabled
-        )
-        updated = {
-            "plan_index": plan_index,
-            "task_phase": task_phase,
-        }
-        if plan:
-            updated["completed_steps"] = plan[:plan_index]
-            updated["step_checklist"] = build_step_checklist(plan, plan_index)
-        if plan and plan_index >= len(plan):
-            updated["task_status"] = "done"
         thread_id = _thread_id_from_config(config)
+        updated = reconcile_task_runtime(state, thread_id)
         base = dict(state) if isinstance(state, dict) else {}
         merged = {**base, **updated}
+        terminal = finalize_task_after_delivery(
+            merged, list(_state_get(state, "messages") or [])
+        )
+        if terminal:
+            updated.update(terminal)
+            merged.update(terminal)
         _sync_run_context(thread_id, merged)
         return updated
 
@@ -502,6 +598,163 @@ def _phase_gate_abandon_message(tool_name: str, phase: TaskPhase) -> str:
     )
 
 
+def _delivery_wait_message(tool_name: str, phase: TaskPhase) -> str:
+    """A deliver request is deferred, not abandoned, while prerequisites remain."""
+    label = PHASE_LABELS.get(phase, phase)
+    return (
+        f"⏳ 工具 {tool_name} 尚未执行。当前阶段：{label}。"
+        "仍有缺少成功证据的前置步骤；请完成这些步骤后再次调用。"
+        "交付工具不会因为阶段等待而被永久禁用。"
+    )
+
+
+def _delivery_payload_ready(tool_name: str, kwargs: dict[str, Any]) -> bool:
+    """Require substantive delivery arguments before treating them as synthesis evidence."""
+    if tool_name == "send_email":
+        return bool(str(kwargs.get("to_email") or "").strip()) and len(
+            str(kwargs.get("content") or "").strip()
+        ) >= 40
+    if tool_name == "export_to_excel":
+        return bool(kwargs.get("headers")) and bool(kwargs.get("rows"))
+    if tool_name == "send_wechat_message":
+        return bool(str(kwargs.get("to_name") or "").strip()) and len(
+            str(kwargs.get("message") or kwargs.get("content") or "").strip()
+        ) >= 20
+    if tool_name == "send_wechat_files":
+        return bool(kwargs.get("file_paths"))
+    return False
+
+
+def _successful_task_events(ctx: dict[str, Any], thread_id: str) -> list[dict[str, Any]]:
+    combined = [
+        *list(ctx.get("tool_events") or []),
+        *runtime_events(thread_id),
+    ]
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for event in combined:
+        if not isinstance(event, dict) or not event.get("success"):
+            continue
+        event_id = str(event.get("id") or "")
+        if event_id and event_id in seen:
+            continue
+        if event_id:
+            seen.add(event_id)
+        out.append(event)
+    return out
+
+
+def _try_fast_forward_to_delivery(
+    thread_id: str,
+    tool_name: str,
+    kwargs: dict[str, Any],
+    ctx: dict[str, Any],
+) -> dict[str, Any]:
+    """Reuse task-level evidence and delivery payload to finish prerequisites.
+
+    A single batch/search can legitimately satisfy several gather plan items. A
+    substantive email/export payload also proves that intervening reasoning-only
+    synthesis steps have completed. Steps requiring a missing concrete tool (for
+    example format_pretty_table) are never bypassed.
+    """
+    if not ctx.get("harness_enabled") or not _delivery_payload_ready(tool_name, kwargs):
+        return ctx
+    plan = list(ctx.get("plan") or [])
+    steps = list(ctx.get("step_states") or [])
+    current = int(ctx.get("plan_index") or 0)
+    if not plan or not steps or current >= len(plan):
+        return ctx
+    deliver_index = next(
+        (i for i in range(current, len(plan)) if infer_phase_from_step(plan[i]) == "deliver"),
+        None,
+    )
+    if deliver_index is None or deliver_index <= current:
+        return ctx
+
+    successful = _successful_task_events(ctx, thread_id)
+    synthetic: list[dict[str, Any]] = []
+    for index in range(current, deliver_index):
+        step = steps[index]
+        if step.get("status") in ("succeeded", "skipped"):
+            continue
+        expected = list(step.get("expected_tools") or [])
+        if expected:
+            matches: list[tuple[str, dict[str, Any]]] = []
+            for required in expected:
+                already_attached = next(
+                    (
+                        event
+                        for event in successful
+                        if str(event.get("step_id") or "") == str(step.get("id") or "")
+                        and canonical_tool_name(str(event.get("tool_name") or ""))
+                        == canonical_tool_name(str(required))
+                    ),
+                    None,
+                )
+                if already_attached is not None:
+                    continue
+                match = next(
+                    (
+                        event
+                        for event in successful
+                        if canonical_tool_name(str(event.get("tool_name") or ""))
+                        == canonical_tool_name(str(required))
+                    ),
+                    None,
+                )
+                if match is None:
+                    return ctx
+                matches.append((required, match))
+            for required, source in matches:
+                synthetic.append(
+                    make_tool_event(
+                        tool_name=required,
+                        arguments={"reused_event_id": source.get("id") or ""},
+                        success=True,
+                        output=(
+                            "复用任务级成功证据："
+                            + str(source.get("output_summary") or "")[:500]
+                        ),
+                        latency_ms=0,
+                        step_id=str(step.get("id") or f"step-{index + 1}"),
+                    )
+                )
+        else:
+            already_completed = any(
+                str(event.get("step_id") or "") == str(step.get("id") or "")
+                and event.get("tool_name") == CONTROL_COMPLETE_TOOL
+                for event in successful
+            )
+            if not already_completed:
+                synthetic.append(
+                    make_tool_event(
+                        tool_name=CONTROL_COMPLETE_TOOL,
+                        arguments={"source": tool_name},
+                        success=True,
+                        output="交付参数已包含整理后的实质内容，自动确认该推理步骤完成。",
+                        latency_ms=0,
+                        step_id=str(step.get("id") or f"step-{index + 1}"),
+                    )
+                )
+
+    for event in synthetic:
+        record_runtime_event(thread_id, event)
+    progress = evaluate_progress(
+        plan,
+        steps,
+        ctx.get("tool_events") or [],
+        runtime_events(thread_id),
+    )
+    merged = {**ctx, **progress}
+    merged["task_phase"] = compute_task_phase(
+        plan,
+        int(progress["plan_index"]),
+        harness_enabled=True,
+    )
+    _sync_run_context(thread_id, merged)
+    return _run_task_context.get(thread_id, merged)
+
+
 def _record_phase_gate_block(thread_id: str, tool_name: str, phase: TaskPhase) -> str:
     tid = thread_id or "default"
     if tool_name in _abandoned_tools.get(tid, set()):
@@ -523,6 +776,32 @@ def wrap_tools_with_phase_gate(tools: list[BaseTool]) -> list[BaseTool]:
     return wrapped
 
 
+def make_progress_control_tool() -> BaseTool:
+    """Internal control tool for completing reasoning-only plan steps."""
+    from pydantic import BaseModel, Field
+
+    class CompleteStepInput(BaseModel):
+        evidence: str = Field(
+            description="简要说明本步骤已完成的依据或产出；不能只写‘完成’"
+        )
+
+    def _complete(evidence: str) -> str:
+        body = (evidence or "").strip()
+        if len(body) < 4:
+            return "❌ 完成依据过短，请说明本步骤的实际产出"
+        return f"✅ 当前步骤已提交完成证据：{body[:500]}"
+
+    return StructuredTool.from_function(
+        func=_complete,
+        name=CONTROL_COMPLETE_TOOL,
+        description=(
+            "仅用于完成不需要外部工具的分析、整理、总结步骤。"
+            "工具型步骤不要调用它，工具成功事件会自动推进。"
+        ),
+        args_schema=CompleteStepInput,
+    )
+
+
 def _wrap_tool_phase(tool: BaseTool) -> BaseTool:
     name = tool.name
 
@@ -533,29 +812,99 @@ def _wrap_tool_phase(tool: BaseTool) -> BaseTool:
             DELIVER_ACTION_TOOLS,
             deliver_duplicate_block_message,
             is_deliver_tool_done,
+            mark_deliver_tool_done,
+            release_deliver_tool,
+            reserve_deliver_tool,
         )
 
         config = ensure_config()
         thread_id = _thread_id_from_config(config)
-        if name in DELIVER_ACTION_TOOLS and is_deliver_tool_done(thread_id, name):
-            return deliver_duplicate_block_message(name)
         ctx = _run_task_context.get(thread_id, {})
+        started = perf_counter()
+
+        def finish(
+            output: Any,
+            *,
+            success: bool | None = None,
+            executed: bool = True,
+        ) -> str:
+            text = output if isinstance(output, str) else str(output)
+            if ctx.get("harness_enabled"):
+                record_runtime_event(
+                    thread_id,
+                    make_tool_event(
+                        tool_name=name,
+                        arguments=kwargs,
+                        success=tool_output_succeeded(text) if success is None else success,
+                        output=text,
+                        latency_ms=int((perf_counter() - started) * 1000),
+                        step_id=str(ctx.get("current_step_id") or ""),
+                        executed=executed,
+                    ),
+                )
+            return text
+
+        if name in DELIVER_ACTION_TOOLS and is_deliver_tool_done(thread_id, name):
+            return finish(
+                deliver_duplicate_block_message(name),
+                success=False,
+                executed=False,
+            )
         if not ctx.get("harness_enabled"):
-            result = await tool.ainvoke(kwargs)
-            return result if isinstance(result, str) else str(result)
+            if name in DELIVER_ACTION_TOOLS and not reserve_deliver_tool(thread_id, name):
+                return deliver_duplicate_block_message(name)
+            try:
+                result = await tool.ainvoke(kwargs)
+                text = result if isinstance(result, str) else str(result)
+                if name in DELIVER_ACTION_TOOLS:
+                    if tool_output_succeeded(text):
+                        mark_deliver_tool_done(thread_id, name)
+                    else:
+                        release_deliver_tool(thread_id, name)
+                return text
+            except Exception:
+                release_deliver_tool(thread_id, name)
+                raise
 
         from agent.task_state import PHASE_GATE_EXEMPT_TOOLS
 
         if name in PHASE_GATE_EXEMPT_TOOLS:
-            result = await tool.ainvoke(kwargs)
-            return result if isinstance(result, str) else str(result)
+            try:
+                return finish(await tool.ainvoke(kwargs))
+            except Exception as exc:
+                finish(f"{type(exc).__name__}: {exc}", success=False)
+                raise
 
         phase: TaskPhase = ctx.get("task_phase") or "gather"
         allowed = allowed_tools_for_phase(phase, harness_enabled=True)
+        if name in DELIVER_ACTION_TOOLS and name not in allowed:
+            ctx = _try_fast_forward_to_delivery(thread_id, name, kwargs, ctx)
+            phase = ctx.get("task_phase") or phase
+            allowed = allowed_tools_for_phase(phase, harness_enabled=True)
         if name not in allowed:
-            return _record_phase_gate_block(thread_id, name, phase)
-        result = await tool.ainvoke(kwargs)
-        return result if isinstance(result, str) else str(result)
+            message = (
+                _delivery_wait_message(name, phase)
+                if name in DELIVER_ACTION_TOOLS
+                else _record_phase_gate_block(thread_id, name, phase)
+            )
+            return finish(message, success=False, executed=False)
+        if name in DELIVER_ACTION_TOOLS and not reserve_deliver_tool(thread_id, name):
+            return finish(
+                deliver_duplicate_block_message(name), success=False, executed=False
+            )
+        try:
+            result = await tool.ainvoke(kwargs)
+            text = finish(result)
+            if name in DELIVER_ACTION_TOOLS:
+                if tool_output_succeeded(text):
+                    mark_deliver_tool_done(thread_id, name)
+                else:
+                    release_deliver_tool(thread_id, name)
+            return text
+        except Exception as exc:
+            release_deliver_tool(thread_id, name)
+            finish(f"{type(exc).__name__}: {exc}", success=False)
+            raise
 
     def _gated_sync(**kwargs: Any) -> str:
         from langchain_core.runnables import ensure_config
@@ -564,29 +913,99 @@ def _wrap_tool_phase(tool: BaseTool) -> BaseTool:
             DELIVER_ACTION_TOOLS,
             deliver_duplicate_block_message,
             is_deliver_tool_done,
+            mark_deliver_tool_done,
+            release_deliver_tool,
+            reserve_deliver_tool,
         )
 
         config = ensure_config()
         thread_id = _thread_id_from_config(config)
-        if name in DELIVER_ACTION_TOOLS and is_deliver_tool_done(thread_id, name):
-            return deliver_duplicate_block_message(name)
         ctx = _run_task_context.get(thread_id, {})
+        started = perf_counter()
+
+        def finish(
+            output: Any,
+            *,
+            success: bool | None = None,
+            executed: bool = True,
+        ) -> str:
+            text = output if isinstance(output, str) else str(output)
+            if ctx.get("harness_enabled"):
+                record_runtime_event(
+                    thread_id,
+                    make_tool_event(
+                        tool_name=name,
+                        arguments=kwargs,
+                        success=tool_output_succeeded(text) if success is None else success,
+                        output=text,
+                        latency_ms=int((perf_counter() - started) * 1000),
+                        step_id=str(ctx.get("current_step_id") or ""),
+                        executed=executed,
+                    ),
+                )
+            return text
+
+        if name in DELIVER_ACTION_TOOLS and is_deliver_tool_done(thread_id, name):
+            return finish(
+                deliver_duplicate_block_message(name),
+                success=False,
+                executed=False,
+            )
         if not ctx.get("harness_enabled"):
-            result = tool.invoke(kwargs)
-            return result if isinstance(result, str) else str(result)
+            if name in DELIVER_ACTION_TOOLS and not reserve_deliver_tool(thread_id, name):
+                return deliver_duplicate_block_message(name)
+            try:
+                result = tool.invoke(kwargs)
+                text = result if isinstance(result, str) else str(result)
+                if name in DELIVER_ACTION_TOOLS:
+                    if tool_output_succeeded(text):
+                        mark_deliver_tool_done(thread_id, name)
+                    else:
+                        release_deliver_tool(thread_id, name)
+                return text
+            except Exception:
+                release_deliver_tool(thread_id, name)
+                raise
 
         from agent.task_state import PHASE_GATE_EXEMPT_TOOLS
 
         if name in PHASE_GATE_EXEMPT_TOOLS:
-            result = tool.invoke(kwargs)
-            return result if isinstance(result, str) else str(result)
+            try:
+                return finish(tool.invoke(kwargs))
+            except Exception as exc:
+                finish(f"{type(exc).__name__}: {exc}", success=False)
+                raise
 
         phase: TaskPhase = ctx.get("task_phase") or "gather"
         allowed = allowed_tools_for_phase(phase, harness_enabled=True)
+        if name in DELIVER_ACTION_TOOLS and name not in allowed:
+            ctx = _try_fast_forward_to_delivery(thread_id, name, kwargs, ctx)
+            phase = ctx.get("task_phase") or phase
+            allowed = allowed_tools_for_phase(phase, harness_enabled=True)
         if name not in allowed:
-            return _record_phase_gate_block(thread_id, name, phase)
-        result = tool.invoke(kwargs)
-        return result if isinstance(result, str) else str(result)
+            message = (
+                _delivery_wait_message(name, phase)
+                if name in DELIVER_ACTION_TOOLS
+                else _record_phase_gate_block(thread_id, name, phase)
+            )
+            return finish(message, success=False, executed=False)
+        if name in DELIVER_ACTION_TOOLS and not reserve_deliver_tool(thread_id, name):
+            return finish(
+                deliver_duplicate_block_message(name), success=False, executed=False
+            )
+        try:
+            result = tool.invoke(kwargs)
+            text = finish(result)
+            if name in DELIVER_ACTION_TOOLS:
+                if tool_output_succeeded(text):
+                    mark_deliver_tool_done(thread_id, name)
+                else:
+                    release_deliver_tool(thread_id, name)
+            return text
+        except Exception as exc:
+            release_deliver_tool(thread_id, name)
+            finish(f"{type(exc).__name__}: {exc}", success=False)
+            raise
 
     return StructuredTool(
         name=tool.name,
@@ -606,6 +1025,8 @@ TASK_STATE_KEYS = (
     "completed_steps",
     "step_checklist",
     "task_status",
+    "step_states",
+    "tool_events",
 )
 
 
@@ -632,6 +1053,10 @@ def merge_task_state(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, A
             if isinstance(val, list) and val:
                 out[key] = list(val)
             continue
+        if key in ("step_states", "tool_events"):
+            if isinstance(val, list):
+                out[key] = list(val)
+            continue
         if key == "harness_enabled":
             if "harness_enabled" in patch:
                 out[key] = bool(val)
@@ -647,6 +1072,20 @@ def task_harness_event_payload(state: dict[str, Any]) -> dict[str, Any]:
     plan = list(state.get("plan") or [])
     plan_index = int(state.get("plan_index") or 0)
     checklist = list(state.get("step_checklist") or build_step_checklist(plan, plan_index))
+    public_events = [
+        {
+            "id": event.get("id"),
+            "tool_name": event.get("tool_name"),
+            "success": bool(event.get("success")),
+            "output_summary": str(event.get("output_summary") or "")[:500],
+            "latency_ms": int(event.get("latency_ms") or 0),
+            "step_id": event.get("step_id") or "",
+            "created_at": event.get("created_at") or "",
+            "executed": event.get("executed", True),
+        }
+        for event in list(state.get("tool_events") or [])[-50:]
+        if isinstance(event, dict)
+    ]
     return {
         "type": "task_harness",
         "user_goal": (state.get("user_goal") or "").strip(),
@@ -657,6 +1096,8 @@ def task_harness_event_payload(state: dict[str, Any]) -> dict[str, Any]:
         "harness_enabled": bool(state.get("harness_enabled")),
         "completed_steps": list(state.get("completed_steps") or []),
         "step_checklist": checklist,
+        "step_states": list(state.get("step_states") or []),
+        "tool_events": public_events,
         "current_step": plan[plan_index] if plan and 0 <= plan_index < len(plan) else "",
         "plan_total": len(plan),
     }
@@ -672,6 +1113,7 @@ def clear_run_context(session_id: str) -> None:
     _run_task_context.pop(sid, None)
     _phase_gate_attempts.pop(sid, None)
     _abandoned_tools.pop(sid, None)
+    clear_runtime_events(sid)
 
 
 async def prepare_agent_invoke(

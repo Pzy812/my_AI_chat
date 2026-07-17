@@ -17,6 +17,7 @@ from agent.harness import (
     prepare_agent_invoke,
     wrap_tools_with_phase_gate,
     compute_task_phase,
+    make_progress_control_tool,
 )
 from agent.task_checklist import MAX_TASK_CONTINUATIONS, should_continue_task
 from agent.task_state import TaskHarnessState
@@ -134,6 +135,7 @@ async def langchain_tools_from_mcp_session(
         for t in defs
     ]
     tools = _append_web_search_batch_tool(tools)
+    tools = [*tools, make_progress_control_tool()]
     tools = wrap_tools_with_phase_gate(
         wrap_tools_with_hitl(tools, enabled=effective_hitl_enabled(hitl_enabled))
     )
@@ -267,6 +269,8 @@ async def _invoke_agent(
                 "completed_steps",
                 "step_checklist",
                 "task_status",
+                "step_states",
+                "tool_events",
             )
             if k in state
         }
@@ -318,6 +322,8 @@ async def _invoke_agent(
                     "completed_steps",
                     "step_checklist",
                     "task_status",
+                    "step_states",
+                    "tool_events",
                 )
                 if k in state
             } or task_state

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from threading import Lock
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 
@@ -36,6 +37,8 @@ MAX_DELIVER_CONTINUATIONS = 1
 # thread_id → 当前用户轮次序号 / 该轮已成功执行的外发工具名
 _deliver_turn_serial: dict[str, int] = {}
 _deliver_done: dict[str, set[str]] = {}
+_deliver_inflight: dict[str, set[str]] = {}
+_deliver_lock = Lock()
 
 
 def _human_message_text(msg: HumanMessage) -> str:
@@ -153,8 +156,10 @@ def mark_deliver_tool_done(thread_id: str, tool_name: str) -> None:
     if tool_name not in DELIVER_ACTION_TOOLS:
         return
     tid = (thread_id or "default").strip() or "default"
-    prev = _deliver_done.get(tid, set())
-    _deliver_done[tid] = prev | {tool_name}
+    with _deliver_lock:
+        prev = _deliver_done.get(tid, set())
+        _deliver_done[tid] = prev | {tool_name}
+        _deliver_inflight.setdefault(tid, set()).discard(tool_name)
     try:
         from agent.harness import patch_deliver_done_in_run_context
 
@@ -176,10 +181,36 @@ def is_deliver_tool_done(thread_id: str, tool_name: str) -> bool:
     return tool_name in _deliver_done.get(tid, set())
 
 
+def reserve_deliver_tool(thread_id: str, tool_name: str) -> bool:
+    """Atomically reserve one side effect so parallel tool calls cannot duplicate it."""
+    if tool_name not in DELIVER_ACTION_TOOLS:
+        return True
+    tid = (thread_id or "default").strip() or "default"
+    with _deliver_lock:
+        if tool_name in _deliver_done.get(tid, set()):
+            return False
+        inflight = _deliver_inflight.setdefault(tid, set())
+        if tool_name in inflight:
+            return False
+        inflight.add(tool_name)
+        return True
+
+
+def release_deliver_tool(thread_id: str, tool_name: str) -> None:
+    """Release a failed/cancelled reservation so a later legitimate retry can run."""
+    if tool_name not in DELIVER_ACTION_TOOLS:
+        return
+    tid = (thread_id or "default").strip() or "default"
+    with _deliver_lock:
+        _deliver_inflight.setdefault(tid, set()).discard(tool_name)
+
+
 def clear_deliver_flags(thread_id: str) -> None:
     tid = (thread_id or "default").strip() or "default"
-    _deliver_done.pop(tid, None)
-    _deliver_turn_serial.pop(tid, None)
+    with _deliver_lock:
+        _deliver_done.pop(tid, None)
+        _deliver_turn_serial.pop(tid, None)
+        _deliver_inflight.pop(tid, None)
     try:
         from agent.harness import clear_run_context_deliver_state
 
@@ -248,6 +279,28 @@ def deliver_tools_used(messages: list) -> bool:
     return bool(_detect_completed_deliver_tools(messages_in_current_user_turn(messages)))
 
 
+def required_deliver_tools(user_goal: str) -> set[str]:
+    text = (user_goal or "").strip().lower()
+    required: set[str] = set()
+    if re.search(r"[@＠]\w+|@\w+\.\w+", text) or any(
+        k in text for k in ("邮件", "邮箱", "email")
+    ):
+        required.add("send_email")
+    if "微信" in text:
+        required.add("send_wechat_message")
+    if any(k in text for k in ("excel", "xlsx", "导出表格")):
+        required.add("export_to_excel")
+    return required
+
+
+def deliver_goal_satisfied(user_goal: str, messages: list) -> bool:
+    required = required_deliver_tools(user_goal)
+    if not required:
+        return False
+    completed = _detect_completed_deliver_tools(messages_in_current_user_turn(messages))
+    return required.issubset(completed)
+
+
 def assistant_promised_deliver(reply: str) -> bool:
     text = (reply or "").strip()
     if not text:
@@ -279,9 +332,9 @@ def should_continue_deliver(
         return None
     if messages_have_pending_tool_calls(messages):
         return None
-    if deliver_tools_used(messages):
-        return None
     goal = (state.get("user_goal") or "").strip()
+    if deliver_goal_satisfied(goal, messages):
+        return None
     if not user_goal_requires_deliver(goal):
         return None
     last_ai = _last_ai_message(messages)

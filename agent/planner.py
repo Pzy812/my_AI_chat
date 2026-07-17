@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from agent.task_continue import goal_requires_gather, user_goal_requires_deliver
 from agent.task_state import infer_phase_from_step
+from agent.task_runtime import is_delivery_verification_step
 from config.app_config import (
     AGENT_TASK_HARNESS,
     AGENT_TASK_HARNESS_MIN_SIGNALS,
@@ -18,11 +19,13 @@ from llm.llm_zhipu import make_summary_llm
 logger = logging.getLogger("ai_chat.harness.planner")
 
 PLANNER_SYSTEM = (
-    "你是任务规划助手。将用户目标拆解为 3～7 个可执行步骤，按先后顺序排列。\n"
+    "你是任务规划助手。将用户目标拆解为 3～5 个可执行步骤，按先后顺序排列。\n"
     "要求：\n"
     "1. 信息收集（读文件/搜索/查天气）在前，整理汇总居中，外发/导出（微信/邮件/Excel）在最后；\n"
-    "2. 每步一句话中文，可执行、可验证；\n"
-    "3. 只输出 JSON 数组，如 [\"步骤1\", \"步骤2\"]，不要 markdown 或其它文字。"
+    "2. 同阶段的多个搜索合并为一个批量收集步骤，多个整理动作合并为一个内容合成步骤；\n"
+    "3. 发送邮件/微信或导出必须是最后一步，工具成功即代表任务完成，不要再生成‘确认发送成功’步骤；\n"
+    "4. 每步一句话中文，可执行、可验证；\n"
+    "5. 只输出 JSON 数组，如 [\"步骤1\", \"步骤2\"]，不要 markdown 或其它文字。"
 )
 
 _MULTI_STEP_KEYWORDS = (
@@ -151,6 +154,62 @@ def _fallback_plan(user_goal: str) -> list[str]:
     ]
 
 
+def compact_task_plan(steps: list[str]) -> list[str]:
+    """Remove redundant verification and merge adjacent same-phase work.
+
+    Delivery is never truncated: it is the user-visible goal, not optional cleanup.
+    """
+    compacted: list[str] = []
+    phases: list[str] = []
+    for raw in steps:
+        step = str(raw or "").strip()
+        if not step:
+            continue
+        if is_delivery_verification_step(step):
+            # The real delivery ToolExecutionEvent already verifies success.
+            continue
+        phase = infer_phase_from_step(step)
+        if compacted and phase == phases[-1] and phase in ("gather", "process"):
+            compacted[-1] = f"{compacted[-1]}；{step}"
+            continue
+        compacted.append(step)
+        phases.append(phase)
+    if len(compacted) <= 5:
+        return compacted
+    delivery = [step for step in compacted if infer_phase_from_step(step) == "deliver"]
+    if delivery:
+        preparation = [
+            step for step in compacted if infer_phase_from_step(step) != "deliver"
+        ]
+        return [*preparation[:4], "；".join(delivery)]
+    return compacted[:5]
+
+
+def ensure_plan_has_delivery(
+    steps: list[str], user_goal: str, *, max_steps: int | None = 5
+) -> list[str]:
+    """Repair planner output/checkpoints that accidentally omit requested delivery."""
+    plan = list(steps)
+    if not user_goal_requires_deliver(user_goal):
+        return plan
+    if any(infer_phase_from_step(step) == "deliver" for step in plan):
+        return plan
+
+    goal = (user_goal or "").lower()
+    actions: list[str] = []
+    if any(k in goal for k in ("邮件", "邮箱", "email", "@")):
+        actions.append("发送邮件到指定邮箱")
+    if "微信" in goal:
+        actions.append("发送微信消息或文件给指定联系人")
+    if any(k in goal for k in ("excel", "xlsx", "导出")):
+        actions.append("导出结果到Excel文件")
+    delivery = "；".join(actions) or "完成用户要求的外发交付"
+
+    if max_steps is not None and len(plan) >= max_steps:
+        return [*plan[: max_steps - 1], delivery]
+    return [*plan, delivery]
+
+
 async def build_task_plan(user_goal: str) -> list[str]:
     """用小模型生成步骤计划。"""
     goal = (user_goal or "").strip()
@@ -171,7 +230,8 @@ async def build_task_plan(user_goal: str) -> list[str]:
                 if isinstance(block, dict) and block.get("type") == "text":
                     parts.append(str(block.get("text") or ""))
             content = "\n".join(parts)
-        steps = _parse_plan_json(str(content or ""))
+        steps = compact_task_plan(_parse_plan_json(str(content or "")))
+        steps = ensure_plan_has_delivery(steps, goal)
         if steps:
             return steps
     except Exception as e:

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from agent.harness import count_tool_rounds, trim_messages_for_llm
+from agent.harness import count_tool_rounds, finalize_task_after_delivery, trim_messages_for_llm
+from agent.task_runtime import build_step_states
 from agent.task_state import PHASE_GATE_EXEMPT_TOOLS, allowed_tools_for_phase
 
 
@@ -38,8 +39,29 @@ def test_trim_messages_keeps_first_user_and_tail():
     assert len(trimmed) == 6
 
 
-def test_deliver_tools_exempt_from_gather_phase_gate():
+def test_deliver_tools_not_exempt_from_gather_phase_gate():
     gather_allowed = allowed_tools_for_phase("gather", harness_enabled=True)
     assert "send_email" not in gather_allowed
-    assert "send_email" in PHASE_GATE_EXEMPT_TOOLS
-    assert "export_to_excel" in PHASE_GATE_EXEMPT_TOOLS
+    assert "send_email" not in PHASE_GATE_EXEMPT_TOOLS
+    assert "export_to_excel" not in PHASE_GATE_EXEMPT_TOOLS
+
+
+def test_successful_early_delivery_finalizes_stale_plan():
+    plan = ["搜索天气", "搜索研究", "整理邮件正文", "发送邮件", "确认邮件发送成功"]
+    state = {
+        "user_goal": "搜索天气和研究并发送邮件到 x@y.com",
+        "plan": plan,
+        "plan_index": 1,
+        "step_states": build_step_states(plan),
+    }
+    messages = [
+        HumanMessage(content=state["user_goal"]),
+        ToolMessage(content="✅ 邮件已发送到 x@y.com", tool_call_id="1", name="send_email"),
+    ]
+    patch = finalize_task_after_delivery(state, messages)
+    assert patch["plan_index"] == len(plan)
+    assert patch["task_status"] == "done"
+    assert all(item["done"] for item in patch["step_checklist"])
+    assert patch["step_states"][1]["status"] == "skipped"
+    assert patch["step_states"][3]["status"] == "succeeded"
+    assert patch["step_states"][4]["status"] == "succeeded"
